@@ -1,13 +1,13 @@
 ---
 name: drawio-visio-workflow
-description: Create flowcharts, architecture/framework diagrams, and other draw.io diagrams from requirements, generate preview images for review, then export approved diagrams to true Microsoft Visio .vsdx files. Use when the user asks to draw, beautify, preview, convert, or export diagrams as .drawio, PNG preview, or VSDX, especially when draw.io Desktop 26.0.16 may need to be installed or selected.
+description: Create draw.io diagrams from requirements, optimize existing .drawio files for VSDX fidelity, or extract/convert draw.io data from HTML into VSDX-friendly .drawio files. Generate preview images, iterate until approved, then export true Microsoft Visio .vsdx files with draw.io Desktop 26.0.16 and validate the result.
 ---
 
 # Draw.io to Visio Workflow
 
 Use this skill for the full diagram workflow:
 
-1. Generate or update a `.drawio` source file from the user's requirements.
+1. Generate a `.drawio` source file from requirements, repair an existing `.drawio`, or convert embedded draw.io data from HTML into `.drawio`.
 2. Export a preview image for review.
 3. Iterate on the `.drawio` until the user approves the visual result.
 4. Export the approved diagram to a real `.vsdx` file with draw.io Desktop `26.0.16`.
