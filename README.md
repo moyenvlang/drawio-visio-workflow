@@ -24,8 +24,10 @@
 ## 关键规则
 
 - `.drawio` 是唯一可编辑源文件。
-- 过程文件放在原 `.drawio` 同级目录下的 `temp/` 文件夹。
-- 最终 `.drawio` 和 `.vsdx` 放在原文件同级目录。
+- 原始 `.drawio` 文件保留在原位置。
+- 转换或修复后的 `.drawio` 文件放入原文件同级的 `out/` 文件夹。
+- 导出的 `.vsdx` 文件和截图/预览图片也放入 `out/` 文件夹。
+- 临时文件、中间失败修复文件、对比页、解包目录等用完后删除，不保留。
 - VSDX 导出必须使用 draw.io Desktop `26.0.16`。
 - 不使用 draw.io `30.x` CLI 作为最终 VSDX 导出工具。
 - 对需要在 Visio 中保持加粗、换行、白色文字等效果的文本，尽量拆成独立 `mxCell`，避免依赖复杂 HTML 标签。
@@ -90,20 +92,20 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-ch
 project/diagram.drawio
 ```
 
-最终文件会放在：
+最终交付文件会放在：
 
 ```text
-project/diagram.vsdx
+project/out/
+├── diagram.repaired.drawio
+├── diagram.vsdx
+├── diagram.drawio-preview.png
+└── diagram.vsdx-preview.png
 ```
 
-过程文件会放在：
+原始文件仍保留在：
 
 ```text
-project/temp/
-├── diagram.preview.png
-├── output-name.drawio-preview.png
-├── output-name.vsdx-preview.png
-└── output-name.compare.html
+project/diagram.drawio
 ```
 
 ## 注意事项

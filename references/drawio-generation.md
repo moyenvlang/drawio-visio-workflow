@@ -4,7 +4,7 @@
 
 Use a single practical `.drawio` output unless the user asks for variants.
 
-Write final deliverable `.drawio` files beside the source/requested output path. Put process files such as repair passes, extracted models, previews, comparison HTML, and experimental variants in the `temp/` folder beside that source/requested output path.
+Keep the original `.drawio` in place. Write converted or repaired `.drawio` deliverables to the `out/` folder beside the source/requested output path. Put preview images and exported VSDX files in the same `out/` folder. Delete temporary files, unused repair passes, extracted models, comparison pages, and experimental variants after use.
 
 Preferred `<diagram>` payload for this workflow:
 

@@ -7,7 +7,6 @@ import argparse
 import base64
 import os
 import re
-from html import escape
 import shutil
 import subprocess
 import sys
@@ -630,52 +629,14 @@ def open_text_index(path: Path) -> str:
     return "".join(chunks)
 
 
-def write_compare_html(drawio_png: Path, vsdx_png: Path, output: Path) -> None:
-    html = f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>draw.io vs VSDX round-trip comparison</title>
-  <style>
-    body {{ margin: 0; font-family: Arial, sans-serif; background: #111827; color: #e5e7eb; }}
-    header {{ padding: 12px 16px; border-bottom: 1px solid #374151; }}
-    main {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; align-items: start; }}
-    section {{ background: #1f2937; border: 1px solid #374151; }}
-    h2 {{ margin: 0; padding: 10px 12px; font-size: 15px; font-weight: 700; border-bottom: 1px solid #374151; }}
-    img {{ display: block; width: 100%; height: auto; background: white; }}
-    code {{ color: #bfdbfe; }}
-  </style>
-</head>
-<body>
-  <header>
-    <strong>Round-trip visual check</strong>
-    <div>Left: direct .drawio PNG preview. Right: exported VSDX rendered back to PNG. Compare layout, text, badges, colors, and unexpected arrows.</div>
-  </header>
-  <main>
-    <section>
-      <h2>draw.io preview: <code>{escape(drawio_png.name)}</code></h2>
-      <img src="{escape(drawio_png.name)}" alt="draw.io preview">
-    </section>
-    <section>
-      <h2>VSDX rendered preview: <code>{escape(vsdx_png.name)}</code></h2>
-      <img src="{escape(vsdx_png.name)}" alt="VSDX rendered preview">
-    </section>
-  </main>
-</body>
-</html>
-"""
-    output.write_text(html, encoding="utf-8")
-    print(f"compare: {output}")
-
-
 def source_dir_for(input_file: Path) -> Path:
-    if input_file.parent.name == "temp":
+    if input_file.parent.name == "out":
         return input_file.parent.parent
     return input_file.parent
 
 
-def temp_dir_for(input_file: Path) -> Path:
-    return source_dir_for(input_file) / "temp"
+def out_dir_for(input_file: Path) -> Path:
+    return source_dir_for(input_file) / "out"
 
 
 def cmd_ensure(_: argparse.Namespace) -> int:
@@ -685,20 +646,21 @@ def cmd_ensure(_: argparse.Namespace) -> int:
 
 def cmd_preview(args: argparse.Namespace) -> int:
     input_file = Path(args.input)
-    temp_dir = temp_dir_for(input_file)
-    temp_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = out_dir_for(input_file)
+    out_dir.mkdir(parents=True, exist_ok=True)
     if args.output:
-        output = temp_dir / Path(args.output).name
+        output = out_dir / Path(args.output).name
     else:
-        output = temp_dir / f"{input_file.stem}.preview.png"
+        output = out_dir / f"{input_file.stem}.preview.png"
     export_with_drawio(Path(args.input), output, "png", args.width)
     return 0
 
 
 def cmd_export_vsdx(args: argparse.Namespace) -> int:
     input_file = Path(args.input)
-    final_dir = source_dir_for(input_file)
-    output = final_dir / Path(args.output).name if args.output else final_dir / f"{input_file.stem}.vsdx"
+    out_dir = out_dir_for(input_file)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output = out_dir / Path(args.output).name if args.output else out_dir / f"{input_file.stem}.vsdx"
     export_with_drawio(input_file, output, "vsdx")
     validate_vsdx(output)
     normalize_vsdx_colors(output)
@@ -723,9 +685,9 @@ def cmd_audit_drawio(args: argparse.Namespace) -> int:
 
 def cmd_repair_drawio(args: argparse.Namespace) -> int:
     input_file = Path(args.file)
-    temp_dir = temp_dir_for(input_file)
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    return repair_drawio(input_file, temp_dir / Path(args.output).name)
+    out_dir = out_dir_for(input_file)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return repair_drawio(input_file, out_dir / Path(args.output).name)
 
 
 def cmd_audit_text(args: argparse.Namespace) -> int:
@@ -734,15 +696,12 @@ def cmd_audit_text(args: argparse.Namespace) -> int:
 
 def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     input_file = Path(args.input)
-    final_dir = source_dir_for(input_file)
-    final_dir.mkdir(parents=True, exist_ok=True)
-    temp_dir = temp_dir_for(input_file)
-    temp_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = out_dir_for(input_file)
+    out_dir.mkdir(parents=True, exist_ok=True)
     stem = args.stem or input_file.stem
-    drawio_png = temp_dir / f"{stem}.drawio-preview.png"
-    vsdx_file = final_dir / f"{stem}.vsdx"
-    vsdx_png = temp_dir / f"{stem}.vsdx-preview.png"
-    compare_html = temp_dir / f"{stem}.compare.html"
+    drawio_png = out_dir / f"{stem}.drawio-preview.png"
+    vsdx_file = out_dir / f"{stem}.vsdx"
+    vsdx_png = out_dir / f"{stem}.vsdx-preview.png"
 
     audit_result = audit_drawio(input_file)
     if audit_result != 0 and not args.allow_risky:
@@ -753,8 +712,7 @@ def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     normalize_vsdx_colors(vsdx_file)
     validate_vsdx(vsdx_file)
     export_with_drawio(vsdx_file, vsdx_png, "png", args.width)
-    write_compare_html(drawio_png, vsdx_png, compare_html)
-    print("manual check required: compare drawio-preview.png with vsdx-preview.png before approval")
+    print(f"manual check required: compare {drawio_png} with {vsdx_png} before approval")
     return 0
 
 
@@ -799,7 +757,7 @@ def main() -> int:
     audit.add_argument("--text", action="append", required=True, help="text to find and audit; repeat for multiple labels")
     audit.set_defaults(func=cmd_audit_text)
 
-    rt = sub.add_parser("roundtrip-check", help="export drawio preview, VSDX, VSDX rendered preview, and comparison HTML")
+    rt = sub.add_parser("roundtrip-check", help="export drawio preview, VSDX, and VSDX rendered preview")
     rt.add_argument("input")
     rt.add_argument("--stem")
     rt.add_argument("--width", type=int, default=2000)

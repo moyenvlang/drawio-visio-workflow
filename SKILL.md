@@ -23,7 +23,8 @@ Use this skill for the full diagram workflow:
 - Preview with PNG before exporting VSDX.
 - Export VSDX only with draw.io Desktop `26.0.16`; newer `30.x` CLI builds do not export true VSDX.
 - After exporting VSDX, normalize color cells by preserving `V="#RRGGBB"` and adding `F="RGB(r,g,b)"`.
-- Keep process files in a `temp/` folder beside the source `.drawio`; put final deliverables next to the source `.drawio`.
+- Keep the original `.drawio` in place; put converted/repaired `.drawio`, VSDX, and preview screenshots in an `out/` folder beside the source `.drawio`.
+- Delete temporary files, intermediate files, comparison pages, unpacked folders, and scratch validation outputs after use.
 - Use one VSDX-compatible source contract for both newly generated and repaired `.drawio` files.
 - When optimizing an existing diagram for VSDX, preserve the original visual design and make only targeted compatibility fixes.
 - Run `audit-drawio` before final VSDX export; do not deliver final VSDX while high-risk text structures remain.
@@ -59,22 +60,23 @@ The shared source rules are:
 
 ## Output Layout
 
-Use the source `.drawio` file's directory as the final output directory. Keep only final deliverables next to the source `.drawio`; place intermediate/process files in a `temp/` folder in that same directory.
+Use the source `.drawio` file's directory as the root directory. After converting `.drawio` to Visio, keep only necessary deliverables.
 
-Final deliverables:
+Required layout:
 
-- Approved `.drawio` source when it is the intended editable output.
-- Final normalized `.vsdx`.
+- Keep the original `.drawio` file in its original location.
+- Put converted or repaired `.drawio` files in `out/`.
+- Put exported `.vsdx` files in `out/`.
+- Put screenshot and preview image files in `out/`.
 
-Process files in the source-directory `temp/`:
+Cleanup rule:
 
-- Repair pass files such as `*.repaired1.drawio`, `*.repaired2.drawio`, and `*.repaired3.drawio` unless the repaired file becomes the final approved `.drawio`.
-- PNG previews from `.drawio`.
-- PNG previews rendered from VSDX.
-- Comparison HTML files.
-- Extracted `mxGraphModel` XML, unpacked VSDX folders, validation scratch files, and experimental variants.
+- Delete all temporary files after use.
+- Do not retain intermediate failed repair passes unless they are the selected repaired `.drawio` deliverable.
+- Do not retain comparison HTML pages.
+- Do not retain extracted `mxGraphModel` XML, unpacked VSDX folders, validation scratch files, or experimental variants.
 
-If a process file becomes the approved final source, copy or write the final `.drawio` beside the original using a clear final filename.
+If a repaired file becomes the approved editable source, keep it in `out/` with a clear final filename. Never overwrite the original `.drawio`.
 
 ## VSDX Visual Preservation Rule
 
@@ -293,16 +295,16 @@ If this fails on a newly generated file, fix the generated `.drawio` source dire
 For existing files with common composite labels, repair for up to 3 passes. Each pass writes a new file, audits it, and stops as soon as the audit passes:
 
 ```bash
-mkdir -p temp
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o temp/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio temp/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio temp/input.repaired1.drawio -o temp/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio temp/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio temp/input.repaired2.drawio -o temp/input.repaired3.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio temp/input.repaired3.drawio
+mkdir -p out
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired1.drawio -o out/input.repaired2.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired2.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired2.drawio -o out/input.repaired3.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired3.drawio
 ```
 
-Use the first repaired `.drawio` that passes audit for preview and VSDX export. If it becomes the final approved editable source, write a final `.drawio` beside the original. If the third pass still fails, stop automatic repair and do targeted manual/model edits or report the remaining blockers.
+Use the first repaired `.drawio` that passes audit for preview and VSDX export. Keep only the selected repaired `.drawio` in `out/`; delete unused failed repair-pass files. If the third pass still fails, stop automatic repair and do targeted manual/model edits or report the remaining blockers.
 
 ### 3. Preview
 
@@ -344,12 +346,11 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-ch
 
 This generates:
 
-- `output-name.vsdx`: final normalized Visio file beside the source `.drawio`.
-- `temp/output-name.drawio-preview.png`: direct `.drawio` PNG preview.
-- `temp/output-name.vsdx-preview.png`: PNG rendered from the exported VSDX.
-- `temp/output-name.compare.html`: side-by-side visual comparison.
+- `out/output-name.vsdx`: final normalized Visio file.
+- `out/output-name.drawio-preview.png`: direct `.drawio` PNG preview.
+- `out/output-name.vsdx-preview.png`: PNG rendered from the exported VSDX.
 
-Inspect the comparison before approval. If the VSDX-rendered preview differs materially from the `.drawio` preview, edit the `.drawio`, rerun the round-trip check, and only then deliver the VSDX.
+Compare the two preview images before approval. If the VSDX-rendered preview differs materially from the `.drawio` preview, edit the `.drawio`, rerun the round-trip check, and only then deliver the VSDX.
 
 `roundtrip-check` runs `audit-drawio` first. If it fails, do not bypass it for a final deliverable. `--allow-risky` is only for producing a temporary risk build for inspection.
 
@@ -401,8 +402,7 @@ Report only the useful artifacts:
 
 - final `.drawio` source path, if generated or changed
 - final `.vsdx` path, if exported
-- preview image path in `temp/`, if generated
-- VSDX-rendered preview path in `temp/`, if generated
-- comparison HTML path in `temp/`, if generated
+- preview image path in `out/`, if generated
+- VSDX-rendered preview path in `out/`, if generated
 - draw.io CLI version used
 - short validation result

@@ -28,7 +28,7 @@ Expected:
 ## Preview Command
 
 ```powershell
-& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "temp/input.preview.png" "input.drawio"
+& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "out/input.preview.png" "input.drawio"
 ```
 
 Do not use `-e` for preview PNGs.
@@ -36,15 +36,15 @@ Do not use `-e` for preview PNGs.
 ## VSDX Command
 
 ```powershell
-& "C:\Program Files\draw.io\draw.io.exe" -x -f vsdx -o "output.vsdx" "input.drawio"
+& "C:\Program Files\draw.io\draw.io.exe" -x -f vsdx -o "out/output.vsdx" "input.drawio"
 ```
 
-Final VSDX files belong beside the source `.drawio`. Process files such as previews, comparison HTML, repair passes, unpacked VSDX folders, and model XML belong in the `temp/` folder beside that same source `.drawio`.
+Keep the original `.drawio` in place. Converted or repaired `.drawio` files, final VSDX files, and preview screenshots belong in the `out/` folder beside the source `.drawio`. Delete temporary files, unused repair passes, comparison pages, unpacked VSDX folders, model XML, and other scratch files after use.
 
 After export, normalize VSDX color cells:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py normalize-vsdx-colors output.vsdx
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py normalize-vsdx-colors out/output.vsdx
 ```
 
 ## VSDX Color Formula Rule
@@ -74,9 +74,9 @@ Rules:
 Do not stop after exporting a valid VSDX package. Render the exported VSDX back to PNG and compare it with the direct `.drawio` PNG preview:
 
 ```powershell
-& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "temp/input.drawio-preview.png" "input.drawio"
-& "C:\Program Files\draw.io\draw.io.exe" -x -f vsdx -o "output.vsdx" "input.drawio"
-& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "temp/output.vsdx-preview.png" "output.vsdx"
+& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "out/input.drawio-preview.png" "input.drawio"
+& "C:\Program Files\draw.io\draw.io.exe" -x -f vsdx -o "out/output.vsdx" "input.drawio"
+& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "out/output.vsdx-preview.png" "out/output.vsdx"
 ```
 
 Or use the bundled helper:
@@ -89,17 +89,16 @@ The helper normalizes VSDX colors before rendering the VSDX preview.
 
 The helper produces:
 
-- `output.vsdx` beside the source `.drawio`
-- `temp/output.drawio-preview.png`
-- `temp/output.vsdx-preview.png`
-- `temp/output.compare.html`
+- `out/output.vsdx`
+- `out/output.drawio-preview.png`
+- `out/output.vsdx-preview.png`
 
-Approval requires visual comparison of the direct `.drawio` preview and the VSDX-rendered preview. Package validation alone is not enough.
+Approval requires visual comparison of the direct `.drawio` preview and the VSDX-rendered preview. Package validation alone is not enough. Do not retain generated comparison HTML pages; use the preview image files as the retained review artifacts.
 
 Also audit important text styling. Some exports keep text position but lose bold weight (`Style=0` in VSDX character rows). For headings such as card titles or layer titles, run:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-text output.vsdx --text "路线规划应用" --text "数据服务组件"
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-text out/output.vsdx --text "路线规划应用" --text "数据服务组件"
 ```
 
 If important labels are not bold in the VSDX-rendered preview or the audit reports `bold=False`, treat it as a regression and revise the `.drawio`.
@@ -162,16 +161,16 @@ Fix blocked elements by splitting overlay text, title text, and description text
 For common composite labels, use the bundled repair helper to create new `.drawio` files for up to 3 passes:
 
 ```bash
-mkdir -p temp
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o temp/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio temp/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio temp/input.repaired1.drawio -o temp/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio temp/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio temp/input.repaired2.drawio -o temp/input.repaired3.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio temp/input.repaired3.drawio
+mkdir -p out
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired1.drawio -o out/input.repaired2.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired2.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired2.drawio -o out/input.repaired3.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired3.drawio
 ```
 
-Stop as soon as one repaired file passes `audit-drawio`; use that file for preview and export. If it becomes the approved editable source, write a final `.drawio` beside the original. If the third pass still fails, stop automatic repair and perform targeted manual/model edits or report the remaining blockers. Never overwrite the original file.
+Stop as soon as one repaired file passes `audit-drawio`; use that file for preview and export. Keep only the selected repaired `.drawio` in `out/` and delete unused failed repair-pass files. If the third pass still fails, stop automatic repair and perform targeted manual/model edits or report the remaining blockers. Never overwrite the original file.
 
 The helper is conservative: it handles recognizable title/description and overlay/title/description labels, then leaves uncertain cases for manual edits.
 
