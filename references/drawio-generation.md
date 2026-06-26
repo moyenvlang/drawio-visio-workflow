@@ -74,6 +74,13 @@ If the user provides HTML:
 
 If no embedded draw.io graph exists and the HTML itself is the diagram source, rebuild the `.drawio` from DOM and CSS layout semantics:
 
+- Prefer the bundled converter for supported semantic HTML architecture diagrams:
+
+```bash
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/html_to_drawio.py input.html -o out/input.drawio
+```
+
+The converter supports HTML that uses semantic containers such as `figure`, `canvas`, `layer`, `grid`, `card`, `axis`, `bus`, `tech-axis`, `data-flow`, and `desc`. If those containers are missing, do targeted source mapping instead of leaving a one-off conversion script in `out/`.
 - Map real containers such as figures, canvas/body areas, grids, side axes, cards, buses, and desc/footer panels. Do not infer body elements from header notes, captions, or legends.
 - Compute geometry from CSS box-model values: padding, gaps, column counts, and intended boundaries. Aligned sibling regions must share the same `x + width`; never treat a target right boundary as usable width.
 - For grid/flex-like track layouts such as `left fixed + gap + flexible center + gap + right fixed`, reserve fixed tracks and gaps before computing the center width. The center/body region must end before the right gap and fixed track; it must not cover side axes, legends, labels, or fixed panels.

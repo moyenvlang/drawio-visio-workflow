@@ -27,6 +27,7 @@ Use this skill for high-fidelity diagram-to-Visio conversion:
 - After exporting VSDX, normalize color cells by preserving `V="#RRGGBB"` and adding `F="RGB(r,g,b)"`.
 - Keep the original `.drawio` in place; put converted/repaired `.drawio`, VSDX, and preview screenshots in an `out/` folder beside the source `.drawio`.
 - Delete temporary files, intermediate files, comparison pages, unpacked folders, and scratch validation outputs after use.
+- Use bundled scripts for repeatable conversion work; do not leave one-off conversion scripts in the user's `out/` folder.
 - Use one VSDX-compatible source contract for both newly generated and repaired `.drawio` files.
 - When optimizing an existing diagram for VSDX, preserve the original visual design and make only targeted compatibility fixes.
 - Run `audit-drawio` before final VSDX export; do not deliver final VSDX while high-risk text structures remain.
@@ -304,7 +305,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_codec.py validate o
 ```
 
 If converting from HTML, first extract the embedded `mxfile`, `mxGraphModel`, `data-mxgraph`, or compressed diagram payload, then write a normal `.drawio`.
-If no embedded draw.io graph exists, rebuild from the HTML DOM/CSS structure and follow the HTML-to-drawio structure rule above.
+If no embedded draw.io graph exists, rebuild from the HTML DOM/CSS structure with `scripts/html_to_drawio.py` when the HTML uses supported semantic diagram containers; otherwise perform targeted source mapping and follow the HTML-to-drawio structure rule above.
 For HTML-source rebuilds, compare the source HTML screenshot against the `.drawio` preview and iterate the `.drawio` source for up to 3 rounds before proceeding to VSDX export.
 
 Before VSDX export, audit the source for high-risk text structures:
