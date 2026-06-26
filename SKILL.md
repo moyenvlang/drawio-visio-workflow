@@ -167,6 +167,7 @@ HTML-to-drawio structure rule:
 - For grid/flex-like track layouts with fixed side columns and a flexible center, reserve fixed tracks and gaps first, then give only the remaining width to the center/body region. The center region must not overlap a right-side axis, label, legend, or fixed panel.
 - Side axes must match the source DOM exactly and stop at their related body/canvas content, not footer or description panels.
 - For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit per-character line breaks or separate text cells; do not rely on narrow text boxes or automatic Chinese wrapping.
+- For HTML-to-drawio conversion, render the source HTML to a reference screenshot and compare it with the generated `.drawio` PNG preview before VSDX export. Fix the `.drawio` source and repeat for up to 3 rounds; if the third round still has major visual differences, stop and report the mismatches instead of exporting a final VSDX.
 - After HTML-to-drawio conversion, audit diagram count, side-axis count, inferred elements, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.
 - If the generated `.drawio` structure differs from the HTML structure, fix the `.drawio` source first. VSDX color and `TextXForm` repair are export-fidelity steps, not substitutes for correcting wrong HTML mapping.
 
@@ -304,6 +305,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_codec.py validate o
 
 If converting from HTML, first extract the embedded `mxfile`, `mxGraphModel`, `data-mxgraph`, or compressed diagram payload, then write a normal `.drawio`.
 If no embedded draw.io graph exists, rebuild from the HTML DOM/CSS structure and follow the HTML-to-drawio structure rule above.
+For HTML-source rebuilds, compare the source HTML screenshot against the `.drawio` preview and iterate the `.drawio` source for up to 3 rounds before proceeding to VSDX export.
 
 Before VSDX export, audit the source for high-risk text structures:
 
@@ -348,6 +350,8 @@ Show the preview path to the user. If image viewing is available, inspect the PN
 Apply targeted `.drawio` edits and regenerate the preview until approved.
 
 For existing diagrams, preview comparison is mandatory before VSDX export. Keep the latest preview next to the original draw.io screenshot or prior preview and check for visual drift. If the optimized preview loses badges, bold text/font weight, title hierarchy, layout density, or adds arrows that were not present before, revert that specific change and apply a smaller compatibility fix.
+
+For HTML-source rebuilds, the first preview comparison must be against the rendered source HTML screenshot. If the `.drawio` preview remains materially different after 3 source-fix rounds, stop and report the remaining differences instead of exporting a final VSDX.
 
 ### 4. Export VSDX
 

@@ -80,6 +80,7 @@ If no embedded draw.io graph exists and the HTML itself is the diagram source, r
 - Generate only side axes that exist in the source DOM, and stop each axis at its related body/canvas content rather than footer or description panels.
 - For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit per-character line breaks or separate text cells. Do not rely on narrow text boxes or automatic Chinese wrapping.
 - Mark vertical text, side-axis text, rotated text, connector labels, and intentionally offset labels as special text that must be excluded from generic VSDX `TextXForm` normalization.
+- Render the source HTML to a reference screenshot and compare it with the generated `.drawio` PNG preview before VSDX export. Fix the `.drawio` source and repeat for up to 3 rounds.
 - After conversion, audit diagram count, side-axis count, inferred elements, track boundaries, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.
 
-Do not treat the whole HTML file as a `.drawio`. If the generated `.drawio` structure differs from the HTML structure, fix the `.drawio` source first; VSDX color and `TextXForm` repair are export-fidelity steps, not substitutes for correcting wrong HTML mapping.
+Do not treat the whole HTML file as a `.drawio`. If the generated `.drawio` structure differs from the HTML structure, fix the `.drawio` source first; VSDX color and `TextXForm` repair are export-fidelity steps, not substitutes for correcting wrong HTML mapping. If the third HTML-vs-drawio comparison still has major visual differences, stop and report the remaining mismatches instead of exporting a final VSDX.
