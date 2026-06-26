@@ -7,7 +7,7 @@ description: Convert flowcharts and architecture diagrams from images, .drawio f
 
 Use this skill for high-fidelity diagram-to-Visio conversion:
 
-1. Convert an image, existing `.drawio`, or HTML-embedded diagram into a VSDX-friendly `.drawio` source.
+1. Convert an image, existing `.drawio`, HTML diagram source, or embedded HTML diagram data into a VSDX-friendly `.drawio` source.
 2. Export a preview image for review.
 3. Iterate on the `.drawio` until the user approves the visual result.
 4. Export the approved diagram to a real `.vsdx` file with draw.io Desktop `26.0.16`.
@@ -21,6 +21,7 @@ Use this skill for high-fidelity diagram-to-Visio conversion:
 - Use pure Base64 in `<diagram>` text: only `A-Z`, `a-z`, `0-9`, `+`, `/`, `=`.
 - Do not put uncompressed Chinese/XML text directly inside `<diagram>` when targeting drawon.cn-like importers.
 - Do not URL-escape Base64 as `%2B`, `%2F`, or `%3D` for the primary output unless the user specifically asks for a diagrams.net-standard compressed file.
+- For HTML inputs, preserve DOM and CSS layout semantics when rebuilding `.drawio`; do not infer diagram body structure from header notes, captions, or legends.
 - Preview with PNG before exporting VSDX.
 - Export VSDX only with draw.io Desktop `26.0.16`; newer `30.x` CLI builds do not export true VSDX.
 - After exporting VSDX, normalize color cells by preserving `V="#RRGGBB"` and adding `F="RGB(r,g,b)"`.
@@ -156,8 +157,17 @@ VSDX TextXForm rule:
 
 - If a shape's selection box is correct but its text renders offset in Visio, check the VSDX `TextXForm`, not the draw.io geometry.
 - For normal titles, labels, plain text boxes, wide text boxes, and Chinese headings that should fill and center within their shape, normalize: `TxtPinX=Width/2`, `TxtPinY=Height/2`, `TxtWidth=Width`, `TxtHeight=Height`, `TxtLocPinX=Width/2`, `TxtLocPinY=Height/2`.
-- Do not apply this blindly to connectors, edge labels, rotated text, callouts, intentionally offset annotations, or complex grouped shapes.
+- Do not apply this blindly to vertical text, side-axis text, connectors, edge labels, rotated text, callouts, intentionally offset annotations, or complex grouped shapes.
 - After changing `TextXForm`, render the VSDX back to PNG and compare it with the `.drawio` preview.
+
+HTML-to-drawio structure rule:
+
+- HTML-to-drawio conversion must preserve DOM and CSS layout semantics, not just approximate the screenshot. Map real containers such as figures, canvas/body areas, grids, side axes, cards, buses, and desc/footer panels.
+- Compute geometry from the CSS box model: container padding, gaps, column counts, and intended boundaries. Aligned sibling regions must share the same `x + width`; never treat a target right boundary as usable width.
+- Side axes must match the source DOM exactly and stop at their related body/canvas content, not footer or description panels.
+- For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit per-character line breaks or separate text cells; do not rely on narrow text boxes or automatic Chinese wrapping.
+- After HTML-to-drawio conversion, audit diagram count, side-axis count, inferred elements, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.
+- If the generated `.drawio` structure differs from the HTML structure, fix the `.drawio` source first. VSDX color and `TextXForm` repair are export-fidelity steps, not substitutes for correcting wrong HTML mapping.
 
 ## Required Two-Step Contract
 
@@ -193,7 +203,8 @@ If the input source is HTML:
 
 - Extract embedded draw.io data first.
 - Check common locations: `<mxfile>`, `<mxGraphModel>`, `data-mxgraph`, compressed diagram payloads, or script-embedded graph data.
-- Convert the extracted graph into a `.drawio` file.
+- If embedded draw.io data exists, convert the extracted graph into a `.drawio` file.
+- If the HTML itself is the diagram source, rebuild `.drawio` from the DOM and CSS layout semantics; do not use only a screenshot-like visual approximation.
 - Do not treat the whole HTML document as `.drawio`.
 
 Validate after generation:
@@ -291,6 +302,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_codec.py validate o
 ```
 
 If converting from HTML, first extract the embedded `mxfile`, `mxGraphModel`, `data-mxgraph`, or compressed diagram payload, then write a normal `.drawio`.
+If no embedded draw.io graph exists, rebuild from the HTML DOM/CSS structure and follow the HTML-to-drawio structure rule above.
 
 Before VSDX export, audit the source for high-risk text structures:
 
