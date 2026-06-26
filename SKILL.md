@@ -1,13 +1,13 @@
 ---
 name: drawio-visio-workflow
-description: Create draw.io diagrams from requirements, optimize existing .drawio files for VSDX fidelity, or extract/convert draw.io data from HTML into VSDX-friendly .drawio files. Generate preview images, iterate until approved, then export true Microsoft Visio .vsdx files with draw.io Desktop 26.0.16 and validate the result.
+description: Convert flowcharts and architecture diagrams from images, .drawio files, or HTML into high-fidelity Microsoft Visio .vsdx files. Rebuild or optimize VSDX-friendly .drawio sources, generate preview images, preserve the visual design as much as possible, then export true .vsdx files with draw.io Desktop 26.0.16 and validate the result.
 ---
 
 # Draw.io to Visio Workflow
 
-Use this skill for the full diagram workflow:
+Use this skill for high-fidelity diagram-to-Visio conversion:
 
-1. Generate a `.drawio` source file from requirements, repair an existing `.drawio`, or convert embedded draw.io data from HTML into `.drawio`.
+1. Convert an image, existing `.drawio`, or HTML-embedded diagram into a VSDX-friendly `.drawio` source.
 2. Export a preview image for review.
 3. Iterate on the `.drawio` until the user approves the visual result.
 4. Export the approved diagram to a real `.vsdx` file with draw.io Desktop `26.0.16`.
@@ -15,7 +15,8 @@ Use this skill for the full diagram workflow:
 
 ## Core Rules
 
-- Generate `.drawio` directly. Do not generate HTML first unless the user specifically asks for HTML.
+- Generate or rebuild `.drawio` directly. Do not generate HTML first unless the user specifically asks for HTML.
+- For image inputs, reconstruct editable diagram structure in `.drawio`; do not deliver a VSDX that is only a pasted bitmap unless the user explicitly asks for a raster-only result.
 - Keep the `.drawio` file as the editable source of truth.
 - Use pure Base64 in `<diagram>` text: only `A-Z`, `a-z`, `0-9`, `+`, `/`, `=`.
 - Do not put uncompressed Chinese/XML text directly inside `<diagram>` when targeting drawon.cn-like importers.
@@ -400,7 +401,7 @@ Package validation is necessary but not sufficient. A structurally valid VSDX ca
 
 ## Useful References
 
-- Read `references/drawio-generation.md` when creating a diagram from scratch or converting HTML to `.drawio`.
+- Read `references/drawio-generation.md` when rebuilding a diagram from an image, converting HTML to `.drawio`, or creating VSDX-friendly `.drawio` structure.
 - Read `references/vsdx-export.md` when troubleshooting CLI installation, preview export, or VSDX validation.
 
 ## Final Response

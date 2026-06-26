@@ -6,6 +6,8 @@ Use a single practical `.drawio` output unless the user asks for variants.
 
 Keep the original `.drawio` in place. Write converted or repaired `.drawio` deliverables to the `out/` folder beside the source/requested output path. Put preview images and exported VSDX files in the same `out/` folder. Delete temporary files, unused repair passes, extracted models, comparison pages, and experimental variants after use.
 
+For image inputs, rebuild the diagram as editable draw.io shapes and text. Use the image as a visual reference for layout, colors, hierarchy, and labels; do not produce a VSDX that is only a pasted bitmap unless the user explicitly asks for a raster-only result.
+
 Preferred `<diagram>` payload for this workflow:
 
 - raw-deflate compressed draw.io payload

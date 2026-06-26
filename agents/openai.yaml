@@ -1,3 +1,3 @@
 display_name: Draw.io Visio Workflow
-short_description: Create, convert, optimize, and export draw.io to VSDX
-default_prompt: Create or convert a VSDX-friendly draw.io diagram, preview it, then export the approved result to VSDX.
+short_description: Convert image, draw.io, or HTML diagrams to VSDX
+default_prompt: Convert this flowchart or architecture diagram into a VSDX-friendly draw.io file, preview it, then export a high-fidelity Visio VSDX.

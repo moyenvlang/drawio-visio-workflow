@@ -1,20 +1,20 @@
 # Draw.io Visio Workflow Skill
 
-这是一个用于绘制流程图、架构图并导出 Visio `.vsdx` 文件的 Codex Skill。
+这是一个用于将图片、`.drawio`、HTML 格式的流程图或架构图高保真转换为 Visio `.vsdx` 文件的 Codex Skill。
 
-它的核心目标是：支持从需求描述生成 `.drawio`、优化已有 `.drawio`、或从 HTML 提取/转换 draw.io 图数据，统一生成适合 VSDX 导出的 `.drawio` 源文件；先导出预览图确认效果，再使用 draw.io Desktop `26.0.16` 导出真正可用的 Microsoft Visio `.vsdx` 文件，并对导出结果做结构和视觉校验。
+它的核心目标是：解决好看的流程图、框架图、架构图在导出到 Visio 后难以高度还原的问题。它会把图片、已有 `.drawio` 或 HTML 中的图转换/重建为适合 VSDX 导出的 `.drawio` 源文件；先导出预览图确认效果，再使用 draw.io Desktop `26.0.16` 导出真正可用的 Microsoft Visio `.vsdx` 文件，并对导出结果做结构和视觉校验。
 
 ## 适用场景
 
-- 从 0 到 1 绘制图：根据需求描述生成流程图、框架图、逻辑架构图、系统关系图等 `.drawio` 文件，并生成预览图确认效果。
-- 优化已有 `.drawio`：将现有 `.drawio` 文件调整为更适合导出 VSDX 的结构，减少导出后字体、加粗、颜色、圆角、换行、布局等偏差。
-- 从 HTML 转换：从 HTML 中提取或转换 draw.io 图数据，生成更适合 VSDX 导出的 `.drawio` 文件，再导出为 `.vsdx`。
-- 导出与校验 VSDX：使用 draw.io Desktop `26.0.16` 导出真正的 Visio `.vsdx`，避免生成 PDF 内容伪装成 `.vsdx`。
-- 视觉回归检查：将 `.drawio` 和导出的 `.vsdx` 分别渲染为预览图，对比确认最终交付效果。
+- 图片转 VSDX：根据截图、图片或视觉参考重建可编辑的 `.drawio` 流程图，再导出为高保真的 `.vsdx`。
+- `.drawio` 转 VSDX：优化已有 `.drawio`，减少导出后字体、加粗、颜色、圆角、换行、布局、文字位置等偏差。
+- HTML 转 VSDX：从 HTML 中提取或转换 draw.io 图数据，生成更适合 VSDX 导出的 `.drawio` 文件，再导出为 `.vsdx`。
+- 高保真还原：尽量保持原图的布局、配色、标题层级、卡片结构、徽章、文字样式和整体观感。
+- 导出与校验：使用 draw.io Desktop `26.0.16` 导出真正的 Visio `.vsdx`，并通过预览图和结构校验确认结果。
 
 ## 核心流程
 
-1. 生成或修复 `.drawio` 文件。
+1. 从图片、`.drawio` 或 HTML 转换/重建 VSDX-friendly `.drawio` 文件。
 2. 导出 PNG 预览图，确认 draw.io 中的视觉效果。
 3. 使用 draw.io Desktop `26.0.16` 导出 VSDX。
 4. 校验 VSDX 是否是真正的 Visio ZIP 包。
