@@ -163,6 +163,7 @@ VSDX TextXForm rule:
 
 HTML-to-drawio structure rule:
 
+- HTML-source rebuilds are not exempt from the Unified Source Contract. The generated `.drawio` must use the same compressed Base64 `mxGraphModel` format, text-cell splitting rules, ID/reference validation, `audit-drawio` gate, preview comparison, and VSDX round-trip checks as every other source path.
 - HTML-to-drawio conversion must preserve DOM and CSS layout semantics, not just approximate the screenshot. Map real containers such as figures, canvas/body areas, grids, side axes, cards, buses, and desc/footer panels.
 - Compute geometry from the CSS box model: container padding, gaps, column counts, and intended boundaries. Aligned sibling regions must share the same `x + width`; never treat a target right boundary as usable width.
 - For grid/flex-like track layouts with fixed side columns and a flexible center, reserve fixed tracks and gaps first, then give only the remaining width to the center/body region. The center region must not overlap a right-side axis, label, legend, or fixed panel.
