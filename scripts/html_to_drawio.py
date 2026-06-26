@@ -52,6 +52,11 @@ CARD_COLORS = {
     "gray": (COLORS["gray"], COLORS["gray_line"]),
 }
 
+LEFT_MARGIN = 36
+CONTENT_RIGHT = 1420
+RIGHT_MARGIN = 36
+PAGE_WIDTH = CONTENT_RIGHT + RIGHT_MARGIN
+
 
 @dataclass
 class Node:
@@ -174,7 +179,7 @@ def card_data(card: Node) -> tuple[str, str, str]:
 
 
 class DrawioBuilder:
-    def __init__(self, page_width: int = 1500, page_height: int = 760) -> None:
+    def __init__(self, page_width: int = PAGE_WIDTH, page_height: int = 760) -> None:
         self.model = ET.Element(
             "mxGraphModel",
             {
@@ -252,7 +257,7 @@ class DrawioBuilder:
         ET.SubElement(cell, "mxGeometry", {"x": fmt(x), "y": fmt(y), "width": fmt(w), "height": fmt(h), "as": "geometry"})
 
     def header(self, title: str, note: str) -> None:
-        self.text(36, 22, 980, 36, title, 24, COLORS["ink"], True, "left", "middle", "title")
+        self.text(LEFT_MARGIN, 22, 980, 36, title, 24, COLORS["ink"], True, "left", "middle", "title")
         self.text(1030, 28, 390, 28, note, 12, "#31557f", False, "right", "middle", "note")
 
     def card(self, x: float, y: float, w: float, h: float, title: str, body: str, theme: str) -> None:
@@ -293,8 +298,8 @@ class DrawioBuilder:
     def desc_cards(self, y: float, h: float, cards: list[tuple[str, str]]) -> None:
         if not cards:
             return
-        x = 36
-        right = 1420
+        x = LEFT_MARGIN
+        right = CONTENT_RIGHT
         gap = 12
         width = (right - x - gap * (len(cards) - 1)) / len(cards)
         for idx, (title, body) in enumerate(cards):
@@ -370,7 +375,7 @@ def build_standard(figure: Node) -> tuple[str, ET.Element]:
     for layer in layers:
         label, cards, cols, bus = layer_data(layer)
         h = layer_height(bus)
-        builder.layer(y, h, label, cards, cols, 36, 128, 176, 1244, bus)
+        builder.layer(y, h, label, cards, cols, LEFT_MARGIN, 128, 176, 1244, bus)
         last_bottom = y + h
         y += h + 10
     desc = desc_data(figure)
@@ -395,10 +400,10 @@ def build_logic(figure: Node) -> tuple[str, ET.Element]:
     builder = DrawioBuilder(page_height=760)
     builder.header(title, note)
 
-    left_x = 36
+    left_x = LEFT_MARGIN
     axis_w = 58
     gap = 10
-    outer_right = 1420
+    outer_right = CONTENT_RIGHT
     center_left = left_x + axis_w + gap
     right_axis_x = outer_right - axis_w
     center_right = right_axis_x - gap
@@ -450,7 +455,7 @@ def build_tech(figure: Node) -> tuple[str, ET.Element]:
         bus_node = body.direct_class("bus")
         bus = bus_node[0].text() if bus_node else None
         h = 120 if bus or cols >= 4 and len(cards) >= 4 else 92
-        builder.rect(36, y, 72, h, "#f6f6f6", "#333333", "techlabelbg")
+        builder.rect(LEFT_MARGIN, y, 72, h, "#f6f6f6", "#333333", "techlabelbg")
         builder.text(46, y + 12, 52, h - 24, vertical(label.text()), 22, "#17365d", True, "center", "middle", "techlabel")
         builder.rect(120, y, 1300, h, COLORS["white"], "#8d99a6", "techbody", "dashed=1;")
         inner_x = 132
@@ -476,8 +481,8 @@ def build_data(figure: Node) -> tuple[str, ET.Element]:
     cols = flow.direct_class("data-col")
     builder = DrawioBuilder(page_height=720)
     builder.header(title, note)
-    left = 36
-    right = 1420
+    left = LEFT_MARGIN
+    right = CONTENT_RIGHT
     gap = 10
     col_w = (right - left - gap * (len(cols) - 1)) / len(cols)
     for idx, col in enumerate(cols):
@@ -492,7 +497,7 @@ def build_data(figure: Node) -> tuple[str, ET.Element]:
     canvas = figure.first_class("canvas")
     bus_node = canvas.direct_class("bus") if canvas else []
     if bus_node:
-        builder.bus(36, 512, 1384, 48, bus_node[0].text())
+        builder.bus(LEFT_MARGIN, 512, 1384, 48, bus_node[0].text())
     desc = desc_data(figure)
     builder.desc_cards(576, 98, desc)
     return title, builder.model
@@ -520,6 +525,34 @@ def write_drawio(models: list[tuple[str, ET.Element]], output: Path) -> None:
     output.write_text(ET.tostring(mxfile, encoding="unicode"), encoding="utf-8")
 
 
+def validate_model_bounds(models: list[tuple[str, ET.Element]]) -> None:
+    for name, model in models:
+        page_width = float(model.get("pageWidth") or "0")
+        min_x: float | None = None
+        max_right = 0.0
+        for cell in model.findall(".//mxCell"):
+            geometry = cell.find("mxGeometry")
+            if geometry is None:
+                continue
+            x = float(geometry.get("x") or "0")
+            width = float(geometry.get("width") or "0")
+            if width <= 0:
+                continue
+            min_x = x if min_x is None else min(min_x, x)
+            max_right = max(max_right, x + width)
+        if min_x is None:
+            raise ValueError(f"{name}: generated diagram has no positioned cells")
+        left_gap = min_x
+        right_gap = page_width - max_right
+        if max_right > page_width + 0.1:
+            raise ValueError(f"{name}: generated content exceeds page width ({max_right:.1f} > {page_width:.1f})")
+        if abs(left_gap - right_gap) > 12:
+            raise ValueError(
+                f"{name}: generated page has asymmetric horizontal margins "
+                f"(left={left_gap:.1f}, right={right_gap:.1f}); check HTML right-boundary mapping"
+            )
+
+
 def cmd_convert(args: argparse.Namespace) -> int:
     html_path = Path(args.html)
     text = html_path.read_text(encoding="utf-8")
@@ -529,6 +562,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
     if not figures:
         raise SystemExit("no semantic diagram containers found: expected elements with class='figure'")
     models = [build_figure(figure) for figure in figures]
+    validate_model_bounds(models)
     output = Path(args.output) if args.output else html_path.parent / "out" / f"{html_path.stem}.drawio"
     output.parent.mkdir(parents=True, exist_ok=True)
     write_drawio(models, output)

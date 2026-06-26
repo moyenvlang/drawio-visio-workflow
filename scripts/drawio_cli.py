@@ -227,6 +227,101 @@ def normalize_vsdx_colors(path: Path, output: Path | None = None) -> int:
     return changed
 
 
+def direct_cell(shape: ET.Element, name: str, ns: dict[str, str]) -> ET.Element | None:
+    for cell in shape.findall("v:Cell", ns):
+        if cell.get("N") == name:
+            return cell
+    return None
+
+
+def direct_cell_value(shape: ET.Element, name: str, ns: dict[str, str]) -> str | None:
+    cell = direct_cell(shape, name, ns)
+    return cell.get("V") if cell is not None else None
+
+
+def set_direct_cell(shape: ET.Element, name: str, value: str, ns_uri: str) -> None:
+    cell = None
+    for candidate in shape.findall(f"{{{ns_uri}}}Cell"):
+        if candidate.get("N") == name:
+            cell = candidate
+            break
+    if cell is None:
+        cell = ET.SubElement(shape, f"{{{ns_uri}}}Cell", {"N": name})
+    cell.set("V", value)
+    if "F" in cell.attrib:
+        del cell.attrib["F"]
+
+
+def is_vertical_or_special_text(shape: ET.Element, text: str, ns: dict[str, str]) -> bool:
+    compact = "".join(text.split())
+    line_count = text.count("\n") + text.count("\r")
+    if compact and len(compact) <= 8 and line_count >= max(1, len(compact) - 1):
+        return True
+    if direct_cell(shape, "Angle", ns) is not None:
+        return True
+    if direct_cell(shape, "BeginX", ns) is not None or direct_cell(shape, "EndX", ns) is not None:
+        return True
+    return False
+
+
+def normalize_vsdx_textxform(path: Path, output: Path | None = None) -> int:
+    validate_vsdx(path)
+    target = output or path
+    temp = target.with_suffix(target.suffix + ".tmp")
+    ns_uri = "http://schemas.microsoft.com/office/visio/2012/main"
+    ns = {"v": ns_uri}
+    ET.register_namespace("", ns_uri)
+    ET.register_namespace("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships")
+    changed = 0
+    with ZipFile(path, "r") as zin, ZipFile(temp, "w", ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename.startswith("visio/pages/page") and info.filename.endswith(".xml"):
+                root = ET.fromstring(data)
+                for shape in root.findall(".//v:Shape", ns):
+                    text_el = shape.find("v:Text", ns)
+                    if text_el is None:
+                        continue
+                    text = "".join(text_el.itertext())
+                    if not text.strip() or is_vertical_or_special_text(shape, text, ns):
+                        continue
+                    width = direct_cell_value(shape, "Width", ns)
+                    height = direct_cell_value(shape, "Height", ns)
+                    if not width or not height:
+                        continue
+                    try:
+                        width_f = float(width)
+                        height_f = float(height)
+                    except ValueError:
+                        continue
+                    if width_f <= 0 or height_f <= 0:
+                        continue
+                    half_width = f"{width_f / 2:.12g}"
+                    half_height = f"{height_f / 2:.12g}"
+                    full_width = f"{width_f:.12g}"
+                    full_height = f"{height_f:.12g}"
+                    desired = {
+                        "TxtPinX": half_width,
+                        "TxtPinY": half_height,
+                        "TxtWidth": full_width,
+                        "TxtHeight": full_height,
+                        "TxtLocPinX": half_width,
+                        "TxtLocPinY": half_height,
+                    }
+                    before = {key: direct_cell_value(shape, key, ns) for key in desired}
+                    if before == desired:
+                        continue
+                    for key, value in desired.items():
+                        set_direct_cell(shape, key, value, ns_uri)
+                    changed += 1
+                data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+            zout.writestr(info, data)
+    temp.replace(target)
+    print(f"normalized VSDX TextXForm cells: {changed}")
+    print(f"textxform-normalized: {target}")
+    return changed
+
+
 def decode_drawio_model(path: Path) -> ET.Element:
     root = ET.fromstring(path.read_text(encoding="utf-8"))
     diagram = root.find("diagram")
@@ -664,6 +759,7 @@ def cmd_export_vsdx(args: argparse.Namespace) -> int:
     export_with_drawio(input_file, output, "vsdx")
     validate_vsdx(output)
     normalize_vsdx_colors(output)
+    normalize_vsdx_textxform(output)
     validate_vsdx(output)
     return 0
 
@@ -675,6 +771,12 @@ def cmd_validate_vsdx(args: argparse.Namespace) -> int:
 
 def cmd_normalize_vsdx_colors(args: argparse.Namespace) -> int:
     normalize_vsdx_colors(Path(args.file), Path(args.output) if args.output else None)
+    validate_vsdx(Path(args.output) if args.output else Path(args.file))
+    return 0
+
+
+def cmd_normalize_vsdx_textxform(args: argparse.Namespace) -> int:
+    normalize_vsdx_textxform(Path(args.file), Path(args.output) if args.output else None)
     validate_vsdx(Path(args.output) if args.output else Path(args.file))
     return 0
 
@@ -710,6 +812,7 @@ def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     export_with_drawio(input_file, vsdx_file, "vsdx")
     validate_vsdx(vsdx_file)
     normalize_vsdx_colors(vsdx_file)
+    normalize_vsdx_textxform(vsdx_file)
     validate_vsdx(vsdx_file)
     export_with_drawio(vsdx_file, vsdx_png, "png", args.width)
     print(f"manual check required: compare {drawio_png} with {vsdx_png} before approval")
@@ -742,6 +845,11 @@ def main() -> int:
     norm.add_argument("file")
     norm.add_argument("-o", "--output")
     norm.set_defaults(func=cmd_normalize_vsdx_colors)
+
+    norm_text = sub.add_parser("normalize-vsdx-textxform", help="center normal VSDX text boxes inside their shapes")
+    norm_text.add_argument("file")
+    norm_text.add_argument("-o", "--output")
+    norm_text.set_defaults(func=cmd_normalize_vsdx_textxform)
 
     audit_drawio_p = sub.add_parser("audit-drawio", help="audit source .drawio for high-risk VSDX text structures")
     audit_drawio_p.add_argument("file")
