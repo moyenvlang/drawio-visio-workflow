@@ -76,9 +76,10 @@ If no embedded draw.io graph exists and the HTML itself is the diagram source, r
 
 - Map real containers such as figures, canvas/body areas, grids, side axes, cards, buses, and desc/footer panels. Do not infer body elements from header notes, captions, or legends.
 - Compute geometry from CSS box-model values: padding, gaps, column counts, and intended boundaries. Aligned sibling regions must share the same `x + width`; never treat a target right boundary as usable width.
+- For grid/flex-like track layouts such as `left fixed + gap + flexible center + gap + right fixed`, reserve fixed tracks and gaps before computing the center width. The center/body region must end before the right gap and fixed track; it must not cover side axes, legends, labels, or fixed panels.
 - Generate only side axes that exist in the source DOM, and stop each axis at its related body/canvas content rather than footer or description panels.
 - For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit per-character line breaks or separate text cells. Do not rely on narrow text boxes or automatic Chinese wrapping.
 - Mark vertical text, side-axis text, rotated text, connector labels, and intentionally offset labels as special text that must be excluded from generic VSDX `TextXForm` normalization.
-- After conversion, audit diagram count, side-axis count, inferred elements, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.
+- After conversion, audit diagram count, side-axis count, inferred elements, track boundaries, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.
 
 Do not treat the whole HTML file as a `.drawio`. If the generated `.drawio` structure differs from the HTML structure, fix the `.drawio` source first; VSDX color and `TextXForm` repair are export-fidelity steps, not substitutes for correcting wrong HTML mapping.
