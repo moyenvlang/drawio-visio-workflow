@@ -57,7 +57,7 @@ Use the same source rules for newly generated and repaired diagrams. New diagram
 - If text must appear in white or another specific color on a colored background, split the background and text into separate `mxCell`s. The background cell should usually have `value=""`; the text cell should be text-only with explicit `fontColor` and `fontStyle`.
 - Do not use white, hidden, or placeholder text inside the main label to reserve visual space.
 - Keep stable Chinese fonts such as `Microsoft YaHei`.
-- Avoid large rounded corners, shadows, and excessive spacing when the file may be exported to VSDX.
+- Prefer `rounded=0` for VSDX-targeted rectangles because draw.io fixed-radius corners can render much larger in Visio Desktop than in draw.io previews. Avoid rounded corners, shadows, and excessive spacing when the file may be exported to VSDX.
 - Run `audit-drawio` after generation and fix the generated source directly if it fails.
 
 Do not use `repair-drawio` as a routine step for newly generated diagrams. If a new file needs repair, the generation structure was wrong and should be corrected.
@@ -85,7 +85,7 @@ The converter supports HTML that uses semantic containers such as `figure`, `can
 - Compute geometry from CSS box-model values: padding, gaps, column counts, and intended boundaries. Aligned sibling regions must share the same `x + width`; never treat a target right boundary as usable width.
 - For grid/flex-like track layouts such as `left fixed + gap + flexible center + gap + right fixed`, reserve fixed tracks and gaps before computing the center width. The center/body region must end before the right gap and fixed track; it must not cover side axes, legends, labels, or fixed panels.
 - Generate only side axes that exist in the source DOM, and stop each axis at its related body/canvas content rather than footer or description panels.
-- For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit per-character line breaks or separate text cells. Do not rely on narrow text boxes or automatic Chinese wrapping.
+- For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit line breaks or separate text cells. Do not rely on narrow text boxes or automatic Chinese wrapping. Split CJK text per character, but keep ASCII words, acronyms, numbers, and version-like tokens unbroken, for example `数字化` becomes `数\n字\n化` while `SaaS` remains `SaaS`.
 - Mark vertical text, side-axis text, rotated text, connector labels, and intentionally offset labels as special text that must be excluded from generic VSDX `TextXForm` normalization.
 - Render the source HTML to a reference screenshot and compare it with the generated `.drawio` PNG preview before VSDX export. Fix the `.drawio` source and repeat for up to 3 rounds.
 - After conversion, audit diagram count, side-axis count, inferred elements, track boundaries, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.

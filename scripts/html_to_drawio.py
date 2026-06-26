@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
+import re
 from urllib.parse import quote
 import uuid
 import zlib
@@ -146,8 +147,25 @@ def fmt(value: float) -> str:
     return f"{value:.1f}"
 
 
+ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9+/#._-]*")
+
+
 def vertical(value: str) -> str:
-    return "\n".join(list(value))
+    tokens: list[str] = []
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char.isspace():
+            index += 1
+            continue
+        match = ASCII_TOKEN_RE.match(value, index)
+        if match:
+            tokens.append(match.group(0))
+            index = match.end()
+            continue
+        tokens.append(char)
+        index += 1
+    return "\n".join(tokens)
 
 
 def card_theme(card: Node) -> str:
@@ -210,7 +228,17 @@ class DrawioBuilder:
         self.next_id += 1
         return value
 
-    def rect(self, x: float, y: float, w: float, h: float, fill: str, stroke: str, prefix: str, extra: str = "") -> None:
+    def rect(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        fill: str,
+        stroke: str,
+        prefix: str,
+        extra: str = "",
+    ) -> None:
         cell = ET.SubElement(
             self.root,
             "mxCell",

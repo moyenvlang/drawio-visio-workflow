@@ -95,8 +95,8 @@ Preserve the original visual design:
 Apply only targeted VSDX-risk fixes:
 
 - Remove `shadow=1`; shadows can change shape bounds after VSDX export.
-- Remove large or percentage rounded corners, especially `arcSize=18` and `arcSize=30`.
-- Prefer `rounded=0` for most rectangles when Visio changes corner radius.
+- Remove rounded corners for VSDX-targeted output when Visio Desktop fidelity is more important than matching HTML corner radius.
+- Prefer `rounded=0` for rectangles because draw.io fixed-radius corners can render much larger in Visio Desktop than in draw.io previews.
 - Reduce large `spacing` values, usually to `spacing=4`, to avoid Visio shrinking usable text width.
 - Slightly enlarge text boxes or cards when needed to absorb font metric differences.
 - Keep stable Chinese fonts such as `Microsoft YaHei`.
@@ -168,7 +168,7 @@ HTML-to-drawio structure rule:
 - Compute geometry from the CSS box model: container padding, gaps, column counts, and intended boundaries. Aligned sibling regions must share the same `x + width`; never treat a target right boundary as usable width.
 - For grid/flex-like track layouts with fixed side columns and a flexible center, reserve fixed tracks and gaps first, then give only the remaining width to the center/body region. The center region must not overlap a right-side axis, label, legend, or fixed panel.
 - Side axes must match the source DOM exactly and stop at their related body/canvas content, not footer or description panels.
-- For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit per-character line breaks or separate text cells; do not rely on narrow text boxes or automatic Chinese wrapping.
+- For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit line breaks or separate text cells; do not rely on narrow text boxes or automatic Chinese wrapping. Split CJK text per character, but keep ASCII words, acronyms, numbers, and version-like tokens unbroken, for example `数字化` becomes `数\n字\n化` while `SaaS` remains `SaaS`.
 - For HTML-to-drawio conversion, render the source HTML to a reference screenshot and compare it with the generated `.drawio` PNG preview before VSDX export. Fix the `.drawio` source and repeat for up to 3 rounds; if the third round still has major visual differences, stop and report the mismatches instead of exporting a final VSDX.
 - After HTML-to-drawio conversion, audit diagram count, side-axis count, inferred elements, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.
 - If the generated `.drawio` structure differs from the HTML structure, fix the `.drawio` source first. VSDX color and `TextXForm` repair are export-fidelity steps, not substitutes for correcting wrong HTML mapping.
