@@ -151,6 +151,13 @@ VSDX color formula rule:
 - Do not replace `V` with `RGB(...)`; this can still render white text as black.
 - Apply this to text, fill, line, and other VSDX color cells before final validation.
 
+VSDX TextXForm rule:
+
+- If a shape's selection box is correct but its text renders offset in Visio, check the VSDX `TextXForm`, not the draw.io geometry.
+- For normal titles, labels, plain text boxes, wide text boxes, and Chinese headings that should fill and center within their shape, normalize: `TxtPinX=Width/2`, `TxtPinY=Height/2`, `TxtWidth=Width`, `TxtHeight=Height`, `TxtLocPinX=Width/2`, `TxtLocPinY=Height/2`.
+- Do not apply this blindly to connectors, edge labels, rotated text, callouts, intentionally offset annotations, or complex grouped shapes.
+- After changing `TextXForm`, render the VSDX back to PNG and compare it with the `.drawio` preview.
+
 ## Required Two-Step Contract
 
 This skill may include requirement gathering, visual design, preview generation, review loops, and troubleshooting, but it must always contain these two technical steps when producing Visio output.

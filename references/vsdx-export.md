@@ -69,6 +69,23 @@ Rules:
 - Do not replace `V` with `RGB(...)`; this can still render white text as black.
 - Apply to text, fill, line, gradient, and other VSDX color cells before final validation.
 
+## VSDX TextXForm Rule
+
+When Visio shows the shape or text selection box in the correct place but the text itself is offset, treat it as a VSDX `TextXForm` problem. This is common with plain text boxes, wide text boxes, Chinese headings, and title-like labels exported from draw.io.
+
+For text that should fill and center in its shape, normalize these ShapeSheet cells:
+
+```text
+TxtPinX    = Width / 2
+TxtPinY    = Height / 2
+TxtWidth   = Width
+TxtHeight  = Height
+TxtLocPinX = Width / 2
+TxtLocPinY = Height / 2
+```
+
+Do not move the shape geometry to fix this. Do not treat it as an HTML layout issue. Do not apply this blindly to connectors, edge labels, rotated text, callouts, intentionally offset annotations, or complex grouped shapes. After changing `TextXForm`, render the VSDX back to PNG and compare it with the direct `.drawio` preview.
+
 ## Required Round-Trip Visual Check
 
 Do not stop after exporting a valid VSDX package. Render the exported VSDX back to PNG and compare it with the direct `.drawio` PNG preview:
