@@ -13,6 +13,12 @@ Common paths:
 - `C:\Program Files\draw.io\draw.io.exe`: often `26.0.16` when installed all-users.
 - `%LOCALAPPDATA%\Programs\draw.io\draw.io.exe`: often latest user install.
 
+The workflow supports both native Windows Python and WSL on Windows:
+
+- In native Windows, pass normal absolute Windows paths to draw.io Desktop and Visio COM.
+- In WSL, convert Linux paths to Windows-visible paths before calling Windows applications. `/mnt/c/...` should become `C:\...`; other WSL paths should use `wslpath -w` when available.
+- Do not hard-code WSL-only path assumptions into commands. Prefer the bundled helper because it performs this path conversion before calling Visio COM.
+
 Always run:
 
 ```powershell
@@ -84,16 +90,26 @@ TxtLocPinX = Width / 2
 TxtLocPinY = Height / 2
 ```
 
-Do not move the shape geometry to fix this. Do not treat it as an HTML layout issue. Do not apply this blindly to connectors, edge labels, rotated text, callouts, intentionally offset annotations, or complex grouped shapes. After changing `TextXForm`, render the VSDX back to PNG and compare it with the direct `.drawio` preview.
+Do not move the shape geometry to fix this. Do not treat it as an HTML layout issue. Do not apply this blindly to connectors, edge labels, rotated text, callouts, intentionally offset annotations, or complex grouped shapes. After changing `TextXForm`, open the VSDX with Microsoft Visio Desktop through COM, export PNG, and compare it with the direct `.drawio` preview.
 
 ## Required Round-Trip Visual Check
 
-Do not stop after exporting a valid VSDX package. Render the exported VSDX back to PNG and compare it with the direct `.drawio` PNG preview:
+Do not stop after exporting a valid VSDX package. Visual checks are split into two bounded stages:
+
+- Stage 1: compare the compliant `.drawio` preview with the source preview. The source preview is the rendered HTML screenshot for HTML inputs, the source image for image inputs, the original `.drawio` preview for existing `.drawio` inputs, or the user-approved design preview for new diagrams.
+- Stage 2: compare the Visio-rendered PNG with the compliant `.drawio` preview approved by Stage 1.
+
+Each stage may run at most 3 fix-and-compare rounds. If a stage still has material mismatches after round 3, stop and report those mismatches instead of continuing indefinitely or claiming final fidelity.
 
 ```powershell
 & "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "out/input.drawio-preview.png" "input.drawio"
 & "C:\Program Files\draw.io\draw.io.exe" -x -f vsdx -o "out/output.vsdx" "input.drawio"
-& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "out/output.vsdx-preview.png" "out/output.vsdx"
+$visio = New-Object -ComObject Visio.Application
+$visio.Visible = $false
+$doc = $visio.Documents.Open((Resolve-Path "out/output.vsdx").Path)
+$doc.Pages.Item(1).Export((Join-Path (Resolve-Path "out").Path "output.visio-preview.png"))
+$doc.Close()
+$visio.Quit()
 ```
 
 Or use the bundled helper:
@@ -102,15 +118,21 @@ Or use the bundled helper:
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output --width 2000
 ```
 
-The helper normalizes VSDX colors before rendering the VSDX preview.
+The helper normalizes VSDX colors and `TextXForm` cells before opening the VSDX with Visio COM for the effect preview.
 
 The helper produces:
 
 - `out/output.vsdx`
 - `out/output.drawio-preview.png`
-- `out/output.vsdx-preview.png`
+- `out/output.visio-preview.png`
 
-Approval requires visual comparison of the direct `.drawio` preview and the VSDX-rendered preview. Package validation alone is not enough. Do not retain generated comparison HTML pages; use the preview image files as the retained review artifacts.
+Approval requires Stage 1 and Stage 2 visual comparison. Package validation alone is not enough. Do not retain generated comparison HTML pages; use the source preview, compliant `.drawio` preview, and Visio preview image as the retained review artifacts.
+
+The Visio-rendered preview requires Microsoft Visio Desktop with COM automation available. If Visio COM is unavailable, report that the true Visio effect preview could not be produced; do not silently substitute a draw.io-rendered VSDX PNG for final validation. This applies equally to native Windows and WSL-on-Windows execution.
+
+Do not generate draw.io's VSDX-to-PNG preview as part of the normal workflow. Once Visio COM export is available, draw.io's rendering of a VSDX is redundant and can hide differences that only appear in Microsoft Visio.
+
+Stable, high-fidelity reproduction has higher priority than reducing token usage or saving execution time. Do not skip source audit, Stage 1 `.drawio` preview comparison, VSDX package validation, color normalization, `TextXForm` normalization, Stage 2 Visio COM preview comparison, or final visual comparison solely for speed or token economy.
 
 Also audit important text styling. Some exports keep text position but lose bold weight (`Style=0` in VSDX character rows). For headings such as card titles or layer titles, run:
 
@@ -118,7 +140,7 @@ Also audit important text styling. Some exports keep text position but lose bold
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-text out/output.vsdx --text "路线规划应用" --text "数据服务组件"
 ```
 
-If important labels are not bold in the VSDX-rendered preview or the audit reports `bold=False`, treat it as a regression and revise the `.drawio`.
+If important labels are not bold in the Visio-rendered preview or the audit reports `bold=False`, treat it as a regression and revise the `.drawio`.
 
 ## VSDX-Friendly Optimization Rule
 
@@ -155,7 +177,7 @@ Use this structure when Visio fidelity matters:
 - Put description text in its own `mxCell` when it should remain normal weight.
 - For colored badge/header/tag elements with white text, put the colored background in a shape with `value=""` and put the white text in a separate text-only `mxCell` above it.
 - Do not use white, hidden, or placeholder text in the main label to reserve visual space for another overlaid element.
-- Do not treat draw.io's VSDX-to-PNG rendering as a complete substitute for opening/checking the file in Visio Desktop.
+- Do not generate or retain draw.io's VSDX-to-PNG rendering as a normal deliverable. Use Microsoft Visio Desktop COM for the VSDX effect preview.
 
 ## Pre-Export Audit and Blocking
 
@@ -194,10 +216,10 @@ The helper is conservative: it handles recognizable title/description and overla
 After each optimization pass:
 
 1. Run `audit-drawio`; fix failures before final export.
-2. Export a PNG preview.
+2. Export a compliant `.drawio` PNG preview and compare it against the source preview for up to 3 Stage 1 rounds.
 3. Export VSDX.
-4. Render the VSDX back to PNG.
-5. Compare the original draw.io preview, previous approved preview, and VSDX-rendered preview.
+4. Open the VSDX with Microsoft Visio Desktop through COM and export PNG.
+5. Compare the Visio-rendered preview against the compliant `.drawio` preview approved by Stage 1 for up to 3 Stage 2 rounds.
 6. Check for missing badges, lost bolding/font weight, shifted text, changed layer spacing, unexpected arrows, and altered title hierarchy.
 7. Audit representative important headings with `audit-text` when bold labels matter.
 8. Apply local fixes only; do not rebuild the whole diagram unless the user approves a redesign.

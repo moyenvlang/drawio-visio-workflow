@@ -64,6 +64,24 @@ def windows_ps(script: str, check: bool = True) -> subprocess.CompletedProcess[s
     return run(["powershell.exe", "-NoProfile", "-Command", script], check=check)
 
 
+def ps_single_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def to_windows_path(path: Path) -> str:
+    absolute = str(path.absolute())
+    match = re.match(r"^/mnt/([a-zA-Z])/(.*)$", absolute)
+    if match:
+        drive = match.group(1).upper()
+        rest = match.group(2).replace("/", "\\")
+        return f"{drive}:\\{rest}"
+    if absolute.startswith("/") and shutil.which("wslpath"):
+        proc = run(["wslpath", "-w", absolute], check=False)
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+    return absolute
+
+
 def version_for(exe: str) -> str | None:
     try:
         if exe.endswith(".exe") or "\\" in exe:
@@ -168,6 +186,45 @@ def export_with_drawio(input_file: Path, output_file: Path, fmt: str, width: int
     if not output_file.exists():
         raise SystemExit(f"output was not created: {output_file}")
     print(f"draw.io {version}: {output_file}")
+
+
+def export_with_visio(vsdx_file: Path, output_file: Path, page: int = 1) -> None:
+    if page < 1:
+        raise SystemExit("--page must be 1 or greater")
+    if not is_windows():
+        raise SystemExit("Visio COM preview requires Windows with Microsoft Visio Desktop installed")
+    if not vsdx_file.exists():
+        raise SystemExit(f"missing file: {vsdx_file}")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    input_path = ps_single_quote(to_windows_path(vsdx_file))
+    output_path = ps_single_quote(to_windows_path(output_file))
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$inputPath = {input_path}
+$outputPath = {output_path}
+$visio = New-Object -ComObject Visio.Application
+$visio.Visible = $false
+try {{
+    $doc = $visio.Documents.Open($inputPath)
+    try {{
+        $page = $doc.Pages.Item({page})
+        $page.Export($outputPath)
+    }} finally {{
+        $doc.Saved = $true
+        $doc.Close()
+    }}
+}} finally {{
+    $visio.Quit()
+}}
+Write-Output $outputPath
+"""
+    proc = windows_ps(script, check=False)
+    print(proc.stdout)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+    if not output_file.exists():
+        raise SystemExit(f"Visio preview was not created: {output_file}")
+    print(f"Visio Desktop COM: {output_file}")
 
 
 def validate_vsdx(path: Path) -> None:
@@ -781,6 +838,13 @@ def cmd_normalize_vsdx_textxform(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_visio_preview(args: argparse.Namespace) -> int:
+    input_file = Path(args.input)
+    output = Path(args.output) if args.output else out_dir_for(input_file) / f"{input_file.stem}.visio-preview.png"
+    export_with_visio(input_file, output, args.page)
+    return 0
+
+
 def cmd_audit_drawio(args: argparse.Namespace) -> int:
     return audit_drawio(Path(args.file))
 
@@ -803,7 +867,7 @@ def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     stem = args.stem or input_file.stem
     drawio_png = out_dir / f"{stem}.drawio-preview.png"
     vsdx_file = out_dir / f"{stem}.vsdx"
-    vsdx_png = out_dir / f"{stem}.vsdx-preview.png"
+    visio_png = out_dir / f"{stem}.visio-preview.png"
 
     audit_result = audit_drawio(input_file)
     if audit_result != 0 and not args.allow_risky:
@@ -814,8 +878,8 @@ def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     normalize_vsdx_colors(vsdx_file)
     normalize_vsdx_textxform(vsdx_file)
     validate_vsdx(vsdx_file)
-    export_with_drawio(vsdx_file, vsdx_png, "png", args.width)
-    print(f"manual check required: compare {drawio_png} with {vsdx_png} before approval")
+    export_with_visio(vsdx_file, visio_png, args.page)
+    print(f"manual check required: compare {drawio_png} with {visio_png} before approval")
     return 0
 
 
@@ -851,6 +915,12 @@ def main() -> int:
     norm_text.add_argument("-o", "--output")
     norm_text.set_defaults(func=cmd_normalize_vsdx_textxform)
 
+    visio_preview = sub.add_parser("visio-preview", help="export a PNG preview from VSDX using Microsoft Visio COM")
+    visio_preview.add_argument("input")
+    visio_preview.add_argument("-o", "--output")
+    visio_preview.add_argument("--page", type=int, default=1)
+    visio_preview.set_defaults(func=cmd_visio_preview)
+
     audit_drawio_p = sub.add_parser("audit-drawio", help="audit source .drawio for high-risk VSDX text structures")
     audit_drawio_p.add_argument("file")
     audit_drawio_p.set_defaults(func=cmd_audit_drawio)
@@ -865,10 +935,11 @@ def main() -> int:
     audit.add_argument("--text", action="append", required=True, help="text to find and audit; repeat for multiple labels")
     audit.set_defaults(func=cmd_audit_text)
 
-    rt = sub.add_parser("roundtrip-check", help="export drawio preview, VSDX, and VSDX rendered preview")
+    rt = sub.add_parser("roundtrip-check", help="export drawio preview, VSDX, and Visio-rendered preview")
     rt.add_argument("input")
     rt.add_argument("--stem")
     rt.add_argument("--width", type=int, default=2000)
+    rt.add_argument("--page", type=int, default=1, help="1-based Visio page number to export as the preview")
     rt.add_argument("--allow-risky", action="store_true", help="continue even if draw.io pre-export audit fails")
     rt.set_defaults(func=cmd_roundtrip_check)
 

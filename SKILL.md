@@ -25,6 +25,10 @@ Use this skill for high-fidelity diagram-to-Visio conversion:
 - Preview with PNG before exporting VSDX.
 - Export VSDX only with draw.io Desktop `26.0.16`; newer `30.x` CLI builds do not export true VSDX.
 - After exporting VSDX, normalize color cells by preserving `V="#RRGGBB"` and adding `F="RGB(r,g,b)"`.
+- Generate the VSDX effect preview by opening the exported `.vsdx` with Microsoft Visio Desktop through COM and exporting PNG. Do not use draw.io's VSDX-to-PNG rendering as the final Visio effect image.
+- Use two bounded visual comparison stages. Stage 1 compares the compliant `.drawio` preview against the source preview. Stage 2 compares the Visio-rendered PNG against that compliant `.drawio` preview. Each stage may run at most 3 fix-and-compare rounds; after the third failed round, stop and report the remaining mismatches.
+- Prioritize stable, high-fidelity visual reproduction over reducing token usage or saving execution time. Do not skip audits, previews, VSDX normalization, or Visio COM validation solely for speed or token economy.
+- Support both native Windows Python and WSL-on-Windows execution. When calling Windows applications from WSL, convert WSL paths to Windows paths; when running directly on Windows, use normal absolute Windows paths.
 - Keep the original `.drawio` in place; put converted/repaired `.drawio`, VSDX, and preview screenshots in an `out/` folder beside the source `.drawio`.
 - Delete temporary files, intermediate files, comparison pages, unpacked folders, and scratch validation outputs after use.
 - Use bundled scripts for repeatable conversion work; do not leave one-off conversion scripts in the user's `out/` folder.
@@ -137,12 +141,14 @@ Handle nested elements carefully:
 - When moving nested shapes, calculate absolute coordinates by recursively summing all parent offsets.
 - Do not assume a single `parent` level; bad coordinate math can move badges to unrelated layers.
 
-Use screenshot comparison as part of the iteration:
+Use two-stage screenshot comparison as part of the iteration:
 
-- Export a PNG preview after each meaningful change.
-- Compare the new preview against the original draw.io rendering or screenshot.
+- Stage 1 checks source-to-drawio fidelity. Build the compliant `.drawio`, export its PNG preview, and compare it against the source preview: rendered HTML screenshot for HTML inputs, source image for image inputs, original `.drawio` preview for existing `.drawio` inputs, or user-approved design preview for new diagrams.
+- Stage 1 can run at most 3 source-fix rounds. If the compliant `.drawio` preview still differs materially from the source preview after round 3, stop and report the remaining mismatches instead of exporting a final VSDX.
 - Check layout, badge positions, bold text/font weight, title hierarchy, section colors, card sizing, and unwanted arrows.
-- After exporting VSDX, render the VSDX back to PNG and compare it against the `.drawio` preview. This round-trip comparison is required before considering the VSDX acceptable.
+- Stage 2 checks drawio-to-VSDX fidelity. After exporting VSDX, open the VSDX in Microsoft Visio Desktop through COM, export PNG, and compare it against the compliant `.drawio` preview approved by Stage 1.
+- Stage 2 can run at most 3 VSDX-fix rounds. If the Visio-rendered PNG still differs materially from the compliant `.drawio` preview after round 3, stop and report the remaining mismatches instead of claiming the VSDX is final.
+- Do not generate draw.io's VSDX-to-PNG preview as part of the normal workflow. It is not needed once a Visio COM PNG preview is available and must not be retained as a deliverable.
 - For key labels that should look bold, inspect both the screenshot and the VSDX character style. A VSDX can preserve layout while losing bold weight.
 - Fix deviations with local edits; avoid restarting from a full rebuild.
 
@@ -159,7 +165,7 @@ VSDX TextXForm rule:
 - If a shape's selection box is correct but its text renders offset in Visio, check the VSDX `TextXForm`, not the draw.io geometry.
 - For normal titles, labels, plain text boxes, wide text boxes, and Chinese headings that should fill and center within their shape, normalize: `TxtPinX=Width/2`, `TxtPinY=Height/2`, `TxtWidth=Width`, `TxtHeight=Height`, `TxtLocPinX=Width/2`, `TxtLocPinY=Height/2`.
 - Do not apply this blindly to vertical text, side-axis text, connectors, edge labels, rotated text, callouts, intentionally offset annotations, or complex grouped shapes.
-- After changing `TextXForm`, render the VSDX back to PNG and compare it with the `.drawio` preview.
+- After changing `TextXForm`, export a Visio COM PNG preview and compare it with the `.drawio` preview.
 
 HTML-to-drawio structure rule:
 
@@ -169,7 +175,7 @@ HTML-to-drawio structure rule:
 - For grid/flex-like track layouts with fixed side columns and a flexible center, reserve fixed tracks and gaps first, then give only the remaining width to the center/body region. The center region must not overlap a right-side axis, label, legend, or fixed panel.
 - Side axes must match the source DOM exactly and stop at their related body/canvas content, not footer or description panels.
 - For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), use explicit line breaks or separate text cells; do not rely on narrow text boxes or automatic Chinese wrapping. Split CJK text per character, but keep ASCII words, acronyms, numbers, and version-like tokens unbroken, for example `数字化` becomes `数\n字\n化` while `SaaS` remains `SaaS`.
-- For HTML-to-drawio conversion, render the source HTML to a reference screenshot and compare it with the generated `.drawio` PNG preview before VSDX export. Fix the `.drawio` source and repeat for up to 3 rounds; if the third round still has major visual differences, stop and report the mismatches instead of exporting a final VSDX.
+- For HTML-to-drawio conversion, render the source HTML to a reference screenshot and compare it with the generated `.drawio` PNG preview in Stage 1. If Stage 1 passes, use the compliant `.drawio` preview as the Stage 2 baseline for the Visio COM PNG preview. Fix the `.drawio` source and repeat Stage 1 for up to 3 rounds; if the third round still has major visual differences, stop and report the mismatches instead of exporting a final VSDX.
 - After HTML-to-drawio conversion, audit diagram count, side-axis count, inferred elements, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.
 - If the generated `.drawio` structure differs from the HTML structure, fix the `.drawio` source first. VSDX color and `TextXForm` repair are export-fidelity steps, not substitutes for correcting wrong HTML mapping.
 
@@ -307,7 +313,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_codec.py validate o
 
 If converting from HTML, first extract the embedded `mxfile`, `mxGraphModel`, `data-mxgraph`, or compressed diagram payload, then write a normal `.drawio`.
 If no embedded draw.io graph exists, rebuild from the HTML DOM/CSS structure with `scripts/html_to_drawio.py` when the HTML uses supported semantic diagram containers; otherwise perform targeted source mapping and follow the HTML-to-drawio structure rule above.
-For HTML-source rebuilds, compare the source HTML screenshot against the `.drawio` preview and iterate the `.drawio` source for up to 3 rounds before proceeding to VSDX export.
+For HTML-source rebuilds, compare the source HTML screenshot against the compliant `.drawio` preview and iterate the `.drawio` source for up to 3 Stage 1 rounds before proceeding to VSDX export. After Stage 1 passes, compare the Visio COM PNG against the compliant `.drawio` preview, not directly against the HTML screenshot.
 
 Before VSDX export, audit the source for high-risk text structures:
 
@@ -353,7 +359,7 @@ Apply targeted `.drawio` edits and regenerate the preview until approved.
 
 For existing diagrams, preview comparison is mandatory before VSDX export. Keep the latest preview next to the original draw.io screenshot or prior preview and check for visual drift. If the optimized preview loses badges, bold text/font weight, title hierarchy, layout density, or adds arrows that were not present before, revert that specific change and apply a smaller compatibility fix.
 
-For HTML-source rebuilds, the first preview comparison must be against the rendered source HTML screenshot. If the `.drawio` preview remains materially different after 3 source-fix rounds, stop and report the remaining differences instead of exporting a final VSDX.
+For HTML-source rebuilds, the first preview comparison must be against the rendered source HTML screenshot. If the `.drawio` preview remains materially different after 3 Stage 1 source-fix rounds, stop and report the remaining differences instead of exporting a final VSDX. If VSDX is exported, compare the Visio-rendered PNG against the compliant `.drawio` preview for up to 3 Stage 2 VSDX-fix rounds.
 
 ### 4. Export VSDX
 
@@ -375,9 +381,13 @@ This generates:
 
 - `out/output-name.vsdx`: final normalized Visio file.
 - `out/output-name.drawio-preview.png`: direct `.drawio` PNG preview.
-- `out/output-name.vsdx-preview.png`: PNG rendered from the exported VSDX.
+- `out/output-name.visio-preview.png`: PNG exported by Microsoft Visio Desktop COM after opening the exported VSDX.
 
-Compare the two preview images before approval. If the VSDX-rendered preview differs materially from the `.drawio` preview, edit the `.drawio`, rerun the round-trip check, and only then deliver the VSDX.
+Compare the Visio-rendered preview against the compliant `.drawio` preview approved by Stage 1 before approval. If the Visio-rendered preview differs materially from that `.drawio` baseline, apply targeted `.drawio` or VSDX compatibility fixes, rerun the round-trip check, and repeat Stage 2 for up to 3 rounds before delivering the VSDX.
+
+The Visio-rendered preview requires Microsoft Visio Desktop with COM automation available. If Visio COM is unavailable, report that the true Visio effect preview could not be produced; do not silently substitute a draw.io-rendered VSDX PNG for final validation.
+
+This workflow must work from both native Windows Python and WSL on Windows. In WSL, files passed to draw.io Desktop or Visio COM must be converted to Windows-visible paths such as `C:\...` or `\\wsl$...`. In native Windows, keep ordinary absolute Windows paths. Avoid hard-coding `/mnt/c/...` assumptions into generated commands or documentation.
 
 `roundtrip-check` runs `audit-drawio` first. If it fails, do not bypass it for a final deliverable. `--allow-risky` is only for producing a temporary risk build for inspection.
 
@@ -416,7 +426,9 @@ A real VSDX is a ZIP package containing at least:
 
 If the file command reports `PDF document`, delete it and re-export using draw.io `26.0.16`. Do not deliver PDF-content files with a `.vsdx` extension.
 
-Package validation is necessary but not sufficient. A structurally valid VSDX can still look wrong in Visio. Always include the VSDX-to-PNG rendered preview in the review loop.
+Package validation is necessary but not sufficient. A structurally valid VSDX can still look wrong in Visio. Always include the Visio COM exported PNG preview in the review loop.
+
+Token and execution-time reduction are secondary goals. Prefer repeatable checks and faithful output over skipping validation work. Only simplify the workflow when the simplification preserves the same two-stage comparison gates and the same VSDX package/text/color validation gates.
 
 ## Useful References
 
@@ -430,6 +442,6 @@ Report only the useful artifacts:
 - final `.drawio` source path, if generated or changed
 - final `.vsdx` path, if exported
 - preview image path in `out/`, if generated
-- VSDX-rendered preview path in `out/`, if generated
+- Visio-rendered preview path in `out/`, if generated
 - draw.io CLI version used
 - short validation result
