@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import base64
+from html import unescape
+from html.parser import HTMLParser
 import os
 import re
 import shutil
@@ -52,12 +54,41 @@ TITLE_DESC_RE = re.compile(
 )
 
 
+def is_native_windows() -> bool:
+    return os.name == "nt"
+
+
+def is_wsl() -> bool:
+    if is_native_windows():
+        return False
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        release = Path("/proc/sys/kernel/osrelease").read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return False
+    return "microsoft" in release or "wsl" in release
+
+
 def is_windows() -> bool:
-    return os.name == "nt" or shutil.which("powershell.exe") is not None
+    return is_native_windows() or (is_wsl() and shutil.which("powershell.exe") is not None)
+
+
+def auto_install_supported() -> bool:
+    return is_native_windows() or (is_wsl() and shutil.which("powershell.exe") is not None)
+
+
+def manual_install_message() -> str:
+    return (
+        f"draw.io Desktop {REQUIRED_VERSION} not found. Automatic install is supported only for "
+        "native Windows Python or WSL with powershell.exe and winget. Install manually, or run on "
+        "Windows: winget install --id JGraph.Draw --exact --version 26.0.16 "
+        "--accept-package-agreements --accept-source-agreements --silent --force"
+    )
 
 
 def run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=check)
+    return subprocess.run(cmd, text=True, errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=check)
 
 
 def windows_ps(script: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -140,11 +171,17 @@ def find_drawio(required: bool = True) -> tuple[str, str] | None:
 
 
 def install_windows() -> None:
-    if not is_windows():
-        raise SystemExit("automatic install is only implemented for Windows winget")
-    check = windows_ps("winget --version", check=False)
+    if not auto_install_supported():
+        raise SystemExit(manual_install_message())
+    try:
+        check = windows_ps("winget --version", check=False)
+    except OSError as exc:
+        raise SystemExit(f"PowerShell is not available; {manual_install_message()}") from exc
     if check.returncode != 0:
-        raise SystemExit("winget is not available; install draw.io Desktop 26.0.16 manually")
+        raise SystemExit(
+            f"winget is not available; install draw.io Desktop {REQUIRED_VERSION} manually, "
+            "or rerun from native Windows/WSL after winget is available"
+        )
     cmd = (
         "winget install --id JGraph.Draw --exact --version 26.0.16 "
         "--accept-package-agreements --accept-source-agreements --silent --force"
@@ -155,11 +192,13 @@ def install_windows() -> None:
         raise SystemExit(proc.returncode)
 
 
-def ensure() -> tuple[str, str]:
+def ensure(install: bool = True) -> tuple[str, str]:
     found = find_drawio(required=False)
     if found:
         print(f"ok: {found[0]} ({found[1]})")
         return found
+    if not install:
+        raise SystemExit(f"draw.io Desktop {REQUIRED_VERSION} not found (--no-install)")
     install_windows()
     found = find_drawio(required=False)
     if not found:
@@ -168,16 +207,35 @@ def ensure() -> tuple[str, str]:
     return found
 
 
-def export_with_drawio(input_file: Path, output_file: Path, fmt: str, width: int | None = None) -> None:
+def export_with_drawio(
+    input_file: Path,
+    output_file: Path,
+    fmt: str,
+    width: int | None = None,
+    page_index: int | None = None,
+) -> None:
     exe, version = ensure()
     if is_windows() and "\\" in exe:
-        extra = f" --width {width}" if width and fmt.lower() == "png" else ""
-        script = f'& "{exe}" -x -f {fmt}{extra} -o "{str(output_file)}" "{str(input_file)}"'
+        script_parts = ["&", ps_single_quote(exe), "-x", "-f", ps_single_quote(fmt)]
+        if width and fmt.lower() == "png":
+            script_parts.extend(["--width", str(width)])
+        if page_index is not None:
+            script_parts.extend(["-p", str(page_index)])
+        script_parts.extend(
+            [
+                "-o",
+                ps_single_quote(to_windows_path(output_file)),
+                ps_single_quote(to_windows_path(input_file)),
+            ]
+        )
+        script = " ".join(script_parts)
         proc = windows_ps(script, check=False)
     else:
         cmd = [exe, "-x", "-f", fmt]
         if width and fmt.lower() == "png":
             cmd.extend(["--width", str(width)])
+        if page_index is not None:
+            cmd.extend(["-p", str(page_index)])
         cmd.extend(["-o", str(output_file), str(input_file)])
         proc = run(cmd, check=False)
     print(proc.stdout)
@@ -216,7 +274,7 @@ try {{
 }} finally {{
     $visio.Quit()
 }}
-Write-Output $outputPath
+Write-Output "ok:visio-preview page={page}"
 """
     proc = windows_ps(script, check=False)
     print(proc.stdout)
@@ -225,6 +283,56 @@ Write-Output $outputPath
     if not output_file.exists():
         raise SystemExit(f"Visio preview was not created: {output_file}")
     print(f"Visio Desktop COM: {output_file}")
+
+
+def export_all_with_visio(vsdx_file: Path, out_dir: Path, stem: str) -> list[Path]:
+    if not is_windows():
+        raise SystemExit("Visio COM preview requires Windows with Microsoft Visio Desktop installed")
+    if not vsdx_file.exists():
+        raise SystemExit(f"missing file: {vsdx_file}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    input_path = ps_single_quote(to_windows_path(vsdx_file))
+    output_dir = ps_single_quote(to_windows_path(out_dir))
+    stem_value = ps_single_quote(stem)
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$inputPath = {input_path}
+$outputDir = {output_dir}
+$stem = {stem_value}
+$visio = New-Object -ComObject Visio.Application
+$visio.Visible = $false
+try {{
+    $doc = $visio.Documents.Open($inputPath)
+    try {{
+        for ($i = 1; $i -le $doc.Pages.Count; $i++) {{
+            $target = Join-Path $outputDir ("$stem.visio-page$i.png")
+            $doc.Pages.Item($i).Export($target)
+            Write-Output ("ok:visio-preview-page " + $i)
+        }}
+        Write-Output ("pages=" + $doc.Pages.Count)
+    }} finally {{
+        $doc.Saved = $true
+        $doc.Close()
+    }}
+}} finally {{
+    $visio.Quit()
+}}
+"""
+    proc = windows_ps(script, check=False)
+    print(proc.stdout)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+    match = re.search(r"pages=(\d+)", proc.stdout)
+    if not match:
+        raise SystemExit("Visio preview page count was not reported")
+    count = int(match.group(1))
+    outputs = [out_dir / f"{stem}.visio-page{idx}.png" for idx in range(1, count + 1)]
+    missing = [path for path in outputs if not path.exists()]
+    if missing:
+        raise SystemExit("Visio preview was not created: " + ", ".join(str(path) for path in missing))
+    for path in outputs:
+        print(f"Visio Desktop COM: {path}")
+    return outputs
 
 
 def validate_vsdx(path: Path) -> None:
@@ -243,6 +351,184 @@ def validate_vsdx(path: Path) -> None:
     if missing:
         raise SystemExit(f"invalid VSDX, missing entries: {', '.join(missing)}")
     print(f"ok: {path} is a VSDX package ({path.stat().st_size} bytes)")
+
+
+def drawio_diagrams(path: Path) -> list[ET.Element]:
+    root = ET.fromstring(path.read_text(encoding="utf-8"))
+    diagrams = root.findall("diagram")
+    if not diagrams:
+        raise SystemExit(f"missing <diagram> pages: {path}")
+    return diagrams
+
+
+def drawio_page_count(path: Path) -> int:
+    return len(drawio_diagrams(path))
+
+
+def drawio_page_names(path: Path) -> list[str]:
+    names: list[str] = []
+    for idx, diagram in enumerate(drawio_diagrams(path), 1):
+        names.append(diagram.get("name") or f"Page {idx}")
+    return names
+
+
+class FigureIndexParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.figures: list[dict[str, str]] = []
+        self.stack: list[dict[str, object]] = []
+
+    @staticmethod
+    def attr_map(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
+        return {key: value or "" for key, value in attrs}
+
+    @staticmethod
+    def has_class(attrs: dict[str, str], name: str) -> bool:
+        return name in (attrs.get("class") or "").split()
+
+    def handle_starttag(self, tag: str, attrs_list: list[tuple[str, str | None]]) -> None:
+        attrs = self.attr_map(attrs_list)
+        current = self.stack[-1] if self.stack else None
+        if self.has_class(attrs, "figure"):
+            figure = {"id": attrs.get("id", ""), "title": "", "note": ""}
+            self.figures.append(figure)
+            self.stack.append({"tag": tag, "figure": figure, "capture": ""})
+            return
+        if current is not None:
+            capture = ""
+            if self.has_class(attrs, "figure-title"):
+                capture = "title"
+            elif self.has_class(attrs, "figure-note"):
+                capture = "note"
+            self.stack.append({"tag": tag, "figure": current["figure"], "capture": capture})
+
+    def handle_endtag(self, tag: str) -> None:
+        for idx in range(len(self.stack) - 1, -1, -1):
+            if self.stack[idx].get("tag") == tag:
+                del self.stack[idx:]
+                return
+
+    def handle_data(self, data: str) -> None:
+        if not self.stack:
+            return
+        current = self.stack[-1]
+        capture = current.get("capture")
+        if capture not in {"title", "note"}:
+            return
+        text = " ".join(unescape(data).split())
+        if not text:
+            return
+        figure = current["figure"]
+        assert isinstance(figure, dict)
+        existing = figure.get(capture, "")
+        figure[capture] = f"{existing} {text}".strip() if existing else text
+
+
+def html_figures(path: Path) -> list[dict[str, str]]:
+    parser = FigureIndexParser()
+    parser.feed(path.read_text(encoding="utf-8"))
+    return parser.figures
+
+
+def input_manifest_pages(source: Path, drawio: Path | None = None) -> tuple[str, list[dict[str, str]]]:
+    suffix = source.suffix.lower()
+    pages: list[dict[str, str]] = []
+    if suffix in {".html", ".htm"}:
+        input_type = "HTML"
+        figures = html_figures(source)
+        if figures:
+            for idx, figure in enumerate(figures, 1):
+                pages.append(
+                    {
+                        "index": str(idx),
+                        "source": f"#{figure.get('id')}" if figure.get("id") else f"figure[{idx}]",
+                        "title": figure.get("title") or f"Figure {idx}",
+                        "note": figure.get("note") or "",
+                    }
+                )
+        else:
+            pages.append({"index": "1", "source": "whole document", "title": source.stem, "note": ""})
+    elif suffix == ".drawio":
+        input_type = "drawio"
+        for idx, name in enumerate(drawio_page_names(source), 1):
+            pages.append({"index": str(idx), "source": f"diagram[{idx}]", "title": name, "note": ""})
+    elif suffix in {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff"}:
+        input_type = "image"
+        pages.append({"index": "1", "source": source.name, "title": source.stem, "note": ""})
+    else:
+        input_type = "new/unknown"
+        pages.append({"index": "1", "source": source.name, "title": source.stem, "note": ""})
+    if drawio is not None and drawio.exists():
+        names = drawio_page_names(drawio)
+        if len(names) != len(pages):
+            for idx, name in enumerate(names, 1):
+                if idx <= len(pages):
+                    pages[idx - 1]["drawio_title"] = name
+                else:
+                    pages.append({"index": str(idx), "source": "(no mapped source)", "title": name, "note": "", "drawio_title": name})
+        else:
+            for idx, name in enumerate(names):
+                pages[idx]["drawio_title"] = name
+    return input_type, pages
+
+
+def write_manifest(source: Path, output: Path, drawio: Path | None = None, stem: str | None = None) -> Path:
+    input_type, pages = input_manifest_pages(source, drawio)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    artifact_stem = stem or (drawio.stem if drawio else source.stem)
+    lines = [
+        "# Conversion Worklist",
+        "",
+        f"- Source file: `{source}`",
+        f"- Input type: `{input_type}`",
+        f"- Identified pages: {len(pages)}",
+        f"- Draw.io source: `{drawio}`" if drawio else "- Draw.io source: pending",
+        "",
+        "## Page Map",
+        "",
+    ]
+    for page in pages:
+        idx = page["index"]
+        title = page.get("title", "")
+        lines.extend(
+            [
+                f"### Page {idx}. {title}",
+                "",
+                f"- Source node: `{page.get('source', '')}`",
+                f"- Draw.io page: `{page.get('drawio_title', f'Page {idx}')}`",
+                f"- HTML/source screenshot: `out/{artifact_stem}.html-page{idx}.png`",
+                f"- draw.io preview: `out/{artifact_stem}.drawio-page{idx}.png`",
+                f"- Visio preview: `out/{artifact_stem}.visio-page{idx}.png`",
+            ]
+        )
+        if "技术架构" in title or any(token in title for token in ("SaaS", "PaaS", "DaaS", "IaaS")):
+            lines.append("- Special check: verify SaaS/PaaS/DaaS/IaaS labels do not wrap in Visio.")
+        if page.get("note"):
+            lines.append(f"- Source note: {page['note']}")
+        lines.append("")
+    lines.extend(
+        [
+            "## Required Checks",
+            "",
+            "- [ ] Original source remains unchanged.",
+            "- [ ] `.drawio` encoding validation passed.",
+            "- [ ] `audit-drawio` passed.",
+            "- [ ] All draw.io page previews were exported.",
+            "- [ ] Stage 1 completed per page.",
+            "- [ ] VSDX exported with draw.io Desktop 26.0.16.",
+            "- [ ] VSDX package validation passed.",
+            "- [ ] All Visio COM page previews were exported, or COM unavailability was reported.",
+            "- [ ] Stage 2 completed per page.",
+            "- [ ] Important text styling was audited where relevant.",
+            "- [ ] Scratch files and failed intermediate outputs were removed.",
+            "",
+            "Automatic visual comparison is triage. A `fail` result requires manual review; it blocks final delivery only when structural drift, missing text, color loss, clipping, or material layout shifts are confirmed.",
+            "",
+        ]
+    )
+    output.write_text("\n".join(lines), encoding="utf-8")
+    print(output)
+    return output
 
 
 def rgb_formula(hex_value: str) -> str:
@@ -791,9 +1077,49 @@ def out_dir_for(input_file: Path) -> Path:
     return source_dir_for(input_file) / "out"
 
 
-def cmd_ensure(_: argparse.Namespace) -> int:
-    ensure()
+def cmd_ensure(args: argparse.Namespace) -> int:
+    ensure(install=not args.no_install)
     return 0
+
+
+def script_path(name: str) -> Path:
+    return Path(__file__).resolve().parent / name
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    cmd = [sys.executable, str(script_path("preflight.py")), "--out-dir", str(args.out_dir)]
+    if args.json:
+        cmd.append("--json")
+    if args.strict:
+        cmd.append("--strict")
+    if args.continue_with_risk:
+        cmd.append("--continue-with-risk")
+    proc = run(cmd, check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
+def cmd_html_capture(args: argparse.Namespace) -> int:
+    cmd = [
+        sys.executable,
+        str(script_path("html_capture.py")),
+        args.html,
+        "--selector",
+        args.selector,
+        "--width",
+        str(args.width),
+        "--scale",
+        str(args.scale),
+        "--wait-ms",
+        str(args.wait_ms),
+    ]
+    if args.out:
+        cmd.extend(["--out", args.out])
+    if args.stem:
+        cmd.extend(["--stem", args.stem])
+    proc = run(cmd, check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
 
 
 def cmd_preview(args: argparse.Namespace) -> int:
@@ -804,7 +1130,23 @@ def cmd_preview(args: argparse.Namespace) -> int:
         output = out_dir / Path(args.output).name
     else:
         output = out_dir / f"{input_file.stem}.preview.png"
-    export_with_drawio(Path(args.input), output, "png", args.width)
+    page_index = args.page - 1 if args.page is not None else None
+    export_with_drawio(Path(args.input), output, "png", args.width, page_index)
+    return 0
+
+
+def cmd_preview_pages(args: argparse.Namespace) -> int:
+    input_file = Path(args.input)
+    out_dir = out_dir_for(input_file)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = args.stem or input_file.stem
+    count = drawio_page_count(input_file)
+    outputs = []
+    for idx in range(1, count + 1):
+        output = out_dir / f"{stem}.drawio-page{idx}.png"
+        export_with_drawio(input_file, output, "png", args.width, idx - 1)
+        outputs.append(output)
+    print(f"exported draw.io page previews: {len(outputs)}")
     return 0
 
 
@@ -845,6 +1187,14 @@ def cmd_visio_preview(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_visio_preview_pages(args: argparse.Namespace) -> int:
+    input_file = Path(args.input)
+    out_dir = out_dir_for(input_file)
+    stem = args.stem or input_file.stem
+    export_all_with_visio(input_file, out_dir, stem)
+    return 0
+
+
 def cmd_audit_drawio(args: argparse.Namespace) -> int:
     return audit_drawio(Path(args.file))
 
@@ -872,7 +1222,7 @@ def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     audit_result = audit_drawio(input_file)
     if audit_result != 0 and not args.allow_risky:
         raise SystemExit("draw.io pre-export audit failed; use --allow-risky only for a clearly marked risk build")
-    export_with_drawio(input_file, drawio_png, "png", args.width)
+    export_with_drawio(input_file, drawio_png, "png", args.width, args.page - 1)
     export_with_drawio(input_file, vsdx_file, "vsdx")
     validate_vsdx(vsdx_file)
     normalize_vsdx_colors(vsdx_file)
@@ -883,18 +1233,226 @@ def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_worklist(args: argparse.Namespace) -> int:
+    source = Path(args.source)
+    if not source.exists():
+        raise SystemExit(f"missing source file: {source}")
+    drawio = Path(args.drawio) if args.drawio else None
+    if drawio is not None and not drawio.exists():
+        raise SystemExit(f"missing draw.io file passed with --drawio: {drawio}")
+    out_dir = Path(args.out_dir) if args.out_dir else out_dir_for(source)
+    cmd = [
+        sys.executable,
+        str(script_path("worklist.py")),
+        "create",
+        str(source),
+        "--out-dir",
+        str(out_dir),
+    ]
+    if drawio:
+        cmd.extend(["--drawio", str(drawio)])
+    if args.stem:
+        cmd.extend(["--stem", args.stem])
+    if args.json_output:
+        cmd.extend(["--json-output", args.json_output])
+    if args.output:
+        cmd.extend(["--md-output", args.output])
+    proc = run(cmd, check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
+def cmd_worklist_update(args: argparse.Namespace) -> int:
+    cmd = [
+        sys.executable,
+        str(script_path("worklist.py")),
+        "update-check",
+        args.worklist_json,
+        "--id",
+        args.id,
+        "--status",
+        args.status,
+    ]
+    if args.message:
+        cmd.extend(["--message", args.message])
+    if args.md_output:
+        cmd.extend(["--md-output", args.md_output])
+    proc = run(cmd, check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
+def cmd_scratch_create(args: argparse.Namespace) -> int:
+    cmd = [sys.executable, str(script_path("scratch.py")), "create", "--out-dir", args.out_dir]
+    if args.run_id:
+        cmd.extend(["--run-id", args.run_id])
+    proc = run(cmd, check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
+def cmd_scratch_clean(args: argparse.Namespace) -> int:
+    proc = run([sys.executable, str(script_path("scratch.py")), "clean", args.path], check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
+def cmd_validate_structure(args: argparse.Namespace) -> int:
+    cmd = [
+        sys.executable,
+        str(script_path("validate_structure.py")),
+        "--html",
+        args.html,
+        "--drawio",
+        args.drawio,
+    ]
+    if args.report:
+        cmd.extend(["--report", args.report])
+    proc = run(cmd, check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
+def cmd_visual_triage(args: argparse.Namespace) -> int:
+    cmd = [sys.executable, str(script_path("visual_triage.py")), "--report", args.report, "--mode", args.mode]
+    if args.structure_report:
+        cmd.extend(["--structure-report", args.structure_report])
+    if args.baseline:
+        cmd.extend(["--baseline", args.baseline])
+    if args.candidate:
+        cmd.extend(["--candidate", args.candidate])
+    if args.pixel_report:
+        cmd.extend(["--pixel-report", args.pixel_report])
+    if args.diff:
+        cmd.extend(["--diff", args.diff])
+    proc = run(cmd, check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
+def cmd_patch_drawio(args: argparse.Namespace) -> int:
+    cmd = [sys.executable, str(script_path("patch_drawio_geometry.py")), args.input]
+    if args.output:
+        cmd.extend(["--output", args.output])
+    if args.page is not None:
+        cmd.extend(["--page", str(args.page)])
+    if args.match_id:
+        cmd.extend(["--match-id", args.match_id])
+    if args.match_text:
+        cmd.extend(["--match-text", args.match_text])
+    if args.match_value_regex:
+        cmd.extend(["--match-value-regex", args.match_value_regex])
+    if args.match_style_contains:
+        cmd.extend(["--match-style-contains", args.match_style_contains])
+    for item in args.set or []:
+        cmd.extend(["--set", item])
+    for item in args.set_style or []:
+        cmd.extend(["--set-style", item])
+    for item in args.delete_style or []:
+        cmd.extend(["--delete-style", item])
+    if args.list_matches:
+        cmd.append("--list-matches")
+    if args.dry_run:
+        cmd.append("--dry-run")
+    proc = run(cmd, check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     ensure_p = sub.add_parser("ensure", help="install/locate draw.io Desktop 26.0.16")
+    ensure_p.add_argument("--no-install", action="store_true", help="only check for draw.io Desktop 26.0.16; do not install")
     ensure_p.set_defaults(func=cmd_ensure)
+
+    preflight = sub.add_parser("preflight", help="check draw.io, Visio, screenshot, path, and output dependencies")
+    preflight.add_argument("--out-dir", default="out")
+    preflight.add_argument("--json", action="store_true")
+    preflight.add_argument("--strict", action="store_true")
+    preflight.add_argument("--continue-with-risk", action="store_true")
+    preflight.set_defaults(func=cmd_preflight)
+
+    html_capture = sub.add_parser("html-capture", help="capture HTML diagram containers with Python Playwright Chromium")
+    html_capture.add_argument("html")
+    html_capture.add_argument("--selector", default=".figure")
+    html_capture.add_argument("--out")
+    html_capture.add_argument("--stem")
+    html_capture.add_argument("--width", type=int, default=1600)
+    html_capture.add_argument("--scale", type=float, default=1)
+    html_capture.add_argument("--wait-ms", type=int, default=250)
+    html_capture.set_defaults(func=cmd_html_capture)
+
+    worklist = sub.add_parser("worklist", help="write a conversion worklist with source/page/artifact mapping")
+    worklist.add_argument("source")
+    worklist.add_argument("--drawio", help="generated or repaired .drawio file to map against the source")
+    worklist.add_argument("-o", "--output", help="Markdown output path")
+    worklist.add_argument("--json-output", help="JSON output path")
+    worklist.add_argument("--out-dir")
+    worklist.add_argument("--stem", help="artifact filename stem used in preview names")
+    worklist.set_defaults(func=cmd_worklist)
+
+    worklist_update = sub.add_parser("worklist-update", help="update a worklist check status")
+    worklist_update.add_argument("worklist_json")
+    worklist_update.add_argument("--id", required=True)
+    worklist_update.add_argument("--status", required=True, choices=["pending", "pass", "fail", "skipped", "unavailable", "manual_review"])
+    worklist_update.add_argument("--message", default="")
+    worklist_update.add_argument("--md-output")
+    worklist_update.set_defaults(func=cmd_worklist_update)
+
+    scratch_create = sub.add_parser("scratch-create", help="create an out/.tmp/<run-id> scratch directory")
+    scratch_create.add_argument("--out-dir", default="out")
+    scratch_create.add_argument("--run-id")
+    scratch_create.set_defaults(func=cmd_scratch_create)
+
+    scratch_clean = sub.add_parser("scratch-clean", help="remove a scratch directory")
+    scratch_clean.add_argument("path")
+    scratch_clean.set_defaults(func=cmd_scratch_clean)
+
+    validate_structure = sub.add_parser("validate-structure", help="validate HTML-to-drawio structure without screenshots")
+    validate_structure.add_argument("--html", required=True)
+    validate_structure.add_argument("--drawio", required=True)
+    validate_structure.add_argument("--report")
+    validate_structure.set_defaults(func=cmd_validate_structure)
+
+    visual_triage = sub.add_parser("visual-triage", help="structure-first visual triage wrapper")
+    visual_triage.add_argument("--structure-report")
+    visual_triage.add_argument("--baseline")
+    visual_triage.add_argument("--candidate")
+    visual_triage.add_argument("--mode", default="stage2-vsdx")
+    visual_triage.add_argument("--report", required=True)
+    visual_triage.add_argument("--pixel-report")
+    visual_triage.add_argument("--diff")
+    visual_triage.set_defaults(func=cmd_visual_triage)
+
+    patch_drawio = sub.add_parser("patch-drawio", help="patch draw.io geometry, value, or style by explicit selectors")
+    patch_drawio.add_argument("input")
+    patch_drawio.add_argument("-o", "--output")
+    patch_drawio.add_argument("--page", type=int)
+    patch_drawio.add_argument("--match-id")
+    patch_drawio.add_argument("--match-text")
+    patch_drawio.add_argument("--match-value-regex")
+    patch_drawio.add_argument("--match-style-contains")
+    patch_drawio.add_argument("--set", action="append")
+    patch_drawio.add_argument("--set-style", action="append")
+    patch_drawio.add_argument("--delete-style", action="append")
+    patch_drawio.add_argument("--list-matches", action="store_true")
+    patch_drawio.add_argument("--dry-run", action="store_true")
+    patch_drawio.set_defaults(func=cmd_patch_drawio)
 
     preview = sub.add_parser("preview", help="export a PNG preview")
     preview.add_argument("input")
     preview.add_argument("-o", "--output")
     preview.add_argument("--width", type=int, default=2000)
+    preview.add_argument("--page", type=int, help="1-based draw.io page number to export")
     preview.set_defaults(func=cmd_preview)
+
+    preview_pages = sub.add_parser("preview-pages", help="export one PNG preview per draw.io page")
+    preview_pages.add_argument("input")
+    preview_pages.add_argument("--width", type=int, default=2000)
+    preview_pages.add_argument("--stem")
+    preview_pages.set_defaults(func=cmd_preview_pages)
 
     vsdx = sub.add_parser("export-vsdx", help="export and validate VSDX")
     vsdx.add_argument("input")
@@ -920,6 +1478,11 @@ def main() -> int:
     visio_preview.add_argument("-o", "--output")
     visio_preview.add_argument("--page", type=int, default=1)
     visio_preview.set_defaults(func=cmd_visio_preview)
+
+    visio_preview_pages = sub.add_parser("visio-preview-pages", help="export one PNG preview per VSDX page using Microsoft Visio COM")
+    visio_preview_pages.add_argument("input")
+    visio_preview_pages.add_argument("--stem")
+    visio_preview_pages.set_defaults(func=cmd_visio_preview_pages)
 
     audit_drawio_p = sub.add_parser("audit-drawio", help="audit source .drawio for high-risk VSDX text structures")
     audit_drawio_p.add_argument("file")

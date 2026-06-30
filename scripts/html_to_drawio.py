@@ -483,11 +483,16 @@ def build_tech(figure: Node) -> tuple[str, ET.Element]:
         bus_node = body.direct_class("bus")
         bus = bus_node[0].text() if bus_node else None
         h = 120 if bus or cols >= 4 and len(cards) >= 4 else 92
-        builder.rect(LEFT_MARGIN, y, 72, h, "#f6f6f6", "#333333", "techlabelbg")
-        builder.text(46, y + 12, 52, h - 24, vertical(label.text()), 22, "#17365d", True, "center", "middle", "techlabel")
-        builder.rect(120, y, 1300, h, COLORS["white"], "#8d99a6", "techbody", "dashed=1;")
-        inner_x = 132
-        inner_w = 1276
+        # Visio uses different text metrics from draw.io; short ASCII layer labels
+        # such as DaaS need extra width to avoid wrapping after VSDX export.
+        label_w = 84
+        body_x = LEFT_MARGIN + label_w + 20
+        body_w = CONTENT_RIGHT - body_x
+        builder.rect(LEFT_MARGIN, y, label_w, h, "#f6f6f6", "#333333", "techlabelbg")
+        builder.text(LEFT_MARGIN + 8, y + 12, label_w - 16, h - 24, vertical(label.text()), 22, "#17365d", True, "center", "middle", "techlabel")
+        builder.rect(body_x, y, body_w, h, COLORS["white"], "#8d99a6", "techbody", "dashed=1;")
+        inner_x = body_x + 12
+        inner_w = body_w - 24
         gap = 10
         card_w = (inner_w - gap * (cols - 1)) / cols
         for idx, (card_title, card_body, theme) in enumerate(cards):
