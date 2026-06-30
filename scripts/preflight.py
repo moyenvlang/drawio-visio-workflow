@@ -123,12 +123,20 @@ def check_drawio(no_install: bool) -> Check:
             return Check("drawio", "ok", f"draw.io {version} found", fix=candidate)
     if seen:
         found = ", ".join(f"{path} ({version or 'unknown'})" for path, version in seen)
+        if not no_install and winget_available():
+            return Check(
+                "drawio",
+                "warning",
+                f"draw.io {REQUIRED_DRAWIO_VERSION} not found; found {found}",
+                "The requested draw.io preview/export step cannot run until the fixed version is installed.",
+                "Continue to the draw.io command or run ensure; it can automatically install the fixed version with: winget install --id JGraph.Draw --exact --version 26.0.16 --accept-package-agreements --accept-source-agreements --silent --force",
+            )
         return Check(
             "drawio",
             "blocking",
             f"draw.io {REQUIRED_DRAWIO_VERSION} not found; found {found}",
             "Cannot reliably export final VSDX. Some newer draw.io builds may write invalid .vsdx output.",
-            "Install or switch to draw.io Desktop 26.0.16.",
+            "Install or switch to draw.io Desktop 26.0.16: winget install --id JGraph.Draw --exact --version 26.0.16 --accept-package-agreements --accept-source-agreements --silent --force",
         )
     if no_install:
         return Check(
@@ -141,10 +149,10 @@ def check_drawio(no_install: bool) -> Check:
     if winget_available():
         return Check(
             "drawio",
-            "blocking",
+            "warning",
             f"draw.io {REQUIRED_DRAWIO_VERSION} not found",
-            "Cannot run draw.io preview/export steps until the fixed version is installed.",
-            "Automatic install is available: winget install --id JGraph.Draw --exact --version 26.0.16 --accept-package-agreements --accept-source-agreements --silent --force",
+            "The requested draw.io preview/export step cannot run until the fixed version is installed.",
+            "Continue to the draw.io command or run ensure; it can automatically install the fixed version with: winget install --id JGraph.Draw --exact --version 26.0.16 --accept-package-agreements --accept-source-agreements --silent --force",
         )
     return Check(
         "drawio",
@@ -309,6 +317,8 @@ def print_human(result: dict[str, object]) -> None:
     for check in result["checks"]:  # type: ignore[index]
         item = check  # type: ignore[assignment]
         print(f"- {item['name']}: {item['status']} - {item['message']}")
+        if item.get("fix") and item.get("status") in {"warning"}:
+            print(f"  Fix: {item['fix']}")
     blocking = result["blocking"]  # type: ignore[assignment]
     degraded = result["degraded"]  # type: ignore[assignment]
     if blocking or degraded:
@@ -318,6 +328,8 @@ def print_human(result: dict[str, object]) -> None:
             print("Blocking:")
             for item in blocking:
                 print(f"- {item['name']}: {item['impact']}")
+                if item.get("fix"):
+                    print(f"  Fix: {item['fix']}")
             print("")
             print("Options:")
             print("1. Fix the environment and rerun.")
@@ -328,6 +340,10 @@ def print_human(result: dict[str, object]) -> None:
             print("Can continue with reduced validation:")
             for item in degraded:
                 print(f"- {item['name']}: {item['impact']}")
+                if item.get("fix"):
+                    print(f"  Fix: {item['fix']}")
+            if result["task"] == "roundtrip" and any(item.get("name") == "visio_com" for item in degraded):
+                print("- reduced path: use --task vsdx / export-vsdx instead of roundtrip-check, then report that true Visio-rendered validation was not completed.")
             print("")
             print("Options:")
             print("1. Install the degraded validation dependency and rerun.")

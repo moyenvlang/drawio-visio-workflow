@@ -59,14 +59,14 @@ Dependency classes:
 
 | Dependency | Required when | Missing behavior |
 |---|---|---|
-| draw.io Desktop `26.0.16` | `preview`, `preview-pages`, `export-vsdx`, `roundtrip-check` | Blocking for those steps. Automatically install only when the command truly needs it, auto-install is not disabled, and native Windows or WSL has `powershell.exe` plus `winget`. Otherwise stop with a manual install command. |
-| Visio Desktop COM | True final Visio effect validation | Degraded. VSDX export can continue, but the final response must say true Visio-rendered validation was not completed. Do not auto-install. |
+| draw.io Desktop `26.0.16` | `preview`, `preview-pages`, `export-vsdx`, `roundtrip-check` | Blocking for those steps. `preflight` reports whether fixed-version auto-install is available; the draw.io command itself may auto-install only when it truly needs draw.io, auto-install is not disabled, and native Windows or WSL has `powershell.exe` plus `winget`. Otherwise stop with a manual install command. |
+| Visio Desktop COM | True final Visio effect validation | Degraded. VSDX export can continue through `export-vsdx`, but `roundtrip-check`/`visio-preview-pages` cannot complete true Visio rendering without COM. The final response must say true Visio-rendered validation was not completed. Do not auto-install. |
 | Python Playwright Chromium | HTML source screenshot baselines | Degraded for HTML conversion. Continue only with user acceptance or non-interactive risk mode; otherwise ask the user to install it. Do not auto-install. |
 | Visual diff tooling | Automatic triage reports | Degraded. Manual visual inspection can replace automatic triage if reported. Do not auto-install. |
 | `winget` | Automatic draw.io installation | If unavailable, do not guess another installer. Stop and provide the fixed-version manual install command. |
 | Bundled Python standard-library scripts | Built-in workflow tools | Not external dependencies. Missing bundled scripts are skill installation errors. |
 
-If preflight reports degraded dependencies, tell the user what installing them adds, what continuing loses, and ask whether to install, continue with reduced validation, or stop. Do not prompt for blocking draw.io if the current command can install the fixed version safely; install it automatically unless `--no-install` is set.
+If preflight reports degraded dependencies, tell the user what installing them adds, what continuing loses, and ask whether to install, continue with reduced validation, or stop. If preflight reports draw.io as installable, continue to the actual draw.io command or run `ensure`; that command may install the fixed version automatically unless `--no-install` is set.
 
 Rules:
 
@@ -75,6 +75,7 @@ Rules:
 - In non-interactive runs, `--strict` stops on blocking dependencies or degraded validation dependencies.
 - In non-interactive runs, `--continue-with-risk` continues past degraded checks but not blocking draw.io failures.
 - Use `--no-install` to forbid automatic installation even for blocking draw.io dependencies.
+- If Visio COM is degraded and the user accepts reduced validation, use the `vsdx` scope and `export-vsdx` path; do not run `roundtrip-check` as the degraded path because it is the true Visio preview command.
 
 ### Step 1. Identify Input Type and Page Mapping
 
@@ -302,6 +303,8 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-ch
 ```
 
 `roundtrip-check` is called only after Stage 1 source approval, and it does not replace the input-specific Stage 1 comparison. See `references/vsdx-export.md` for its detailed responsibilities and outputs.
+
+If Visio COM is unavailable and the user accepts reduced validation, do not use `roundtrip-check`; run `export-vsdx`, validate/normalize the package, and report that true Visio-rendered validation was not completed.
 
 For multi-page files, use `export-vsdx` plus `preview-pages` and `visio-preview-pages` so every page has explicit Stage 1 and Stage 2 artifacts. `roundtrip-check` is a targeted single-page helper unless run separately for each relevant page.
 

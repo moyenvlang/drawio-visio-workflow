@@ -9,10 +9,10 @@ Newer draw.io Desktop `30.x` CLI builds do not list `vsdx` in supported export f
 Dependency behavior:
 
 - draw.io Desktop `26.0.16` is a blocking dependency only for commands that actually need draw.io: `preview`, `preview-pages`, `export-vsdx`, and `roundtrip-check`.
-- Those commands may automatically install only the fixed draw.io version, and only on native Windows Python or WSL with `powershell.exe` and `winget`.
+- `preflight` only diagnoses draw.io availability. The actual draw.io commands may automatically install only the fixed draw.io version, and only on native Windows Python or WSL with `powershell.exe` and `winget`.
 - Use `--no-install` on `ensure`, `preview`, `preview-pages`, `export-vsdx`, or `roundtrip-check` to forbid automatic installation.
 - If `winget` or PowerShell is unavailable, stop and provide the manual fixed-version install command. Do not guess macOS, Linux, snap, flatpak, or Homebrew commands.
-- Visio Desktop COM is a degraded validation dependency. If it is unavailable, VSDX export can still complete, but true Visio-rendered preview validation must be reported as unavailable.
+- Visio Desktop COM is a degraded validation dependency. If it is unavailable, VSDX export can still complete through `export-vsdx`, but `roundtrip-check` and `visio-preview-pages` cannot produce true Visio-rendered previews. Report true Visio-rendered validation as unavailable.
 
 ## Windows Paths
 
@@ -147,6 +147,8 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-ch
 ```
 
 The helper normalizes VSDX colors and `TextXForm` cells before opening the VSDX with Visio COM for the effect preview. It does not perform the input-specific Stage 1 comparison against the HTML screenshot, source image, original `.drawio` preview, or user-approved design; complete that comparison separately before treating its output as final.
+
+`roundtrip-check` requires Visio COM for the final preview. If Visio COM is unavailable and the user accepts reduced validation, use `export-vsdx` instead, keep the validated VSDX package, and explicitly report that true Visio-rendered validation could not be completed.
 
 The helper produces:
 
