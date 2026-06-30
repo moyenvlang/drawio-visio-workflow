@@ -213,8 +213,9 @@ def export_with_drawio(
     fmt: str,
     width: int | None = None,
     page_index: int | None = None,
+    install: bool = True,
 ) -> None:
-    exe, version = ensure()
+    exe, version = ensure(install=install)
     if is_windows() and "\\" in exe:
         script_parts = ["&", ps_single_quote(exe), "-x", "-f", ps_single_quote(fmt)]
         if width and fmt.lower() == "png":
@@ -1088,6 +1089,10 @@ def script_path(name: str) -> Path:
 
 def cmd_preflight(args: argparse.Namespace) -> int:
     cmd = [sys.executable, str(script_path("preflight.py")), "--out-dir", str(args.out_dir)]
+    if args.task:
+        cmd.extend(["--task", args.task])
+    if args.no_install:
+        cmd.append("--no-install")
     if args.json:
         cmd.append("--json")
     if args.strict:
@@ -1131,7 +1136,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
     else:
         output = out_dir / f"{input_file.stem}.preview.png"
     page_index = args.page - 1 if args.page is not None else None
-    export_with_drawio(Path(args.input), output, "png", args.width, page_index)
+    export_with_drawio(Path(args.input), output, "png", args.width, page_index, install=not args.no_install)
     return 0
 
 
@@ -1144,7 +1149,7 @@ def cmd_preview_pages(args: argparse.Namespace) -> int:
     outputs = []
     for idx in range(1, count + 1):
         output = out_dir / f"{stem}.drawio-page{idx}.png"
-        export_with_drawio(input_file, output, "png", args.width, idx - 1)
+        export_with_drawio(input_file, output, "png", args.width, idx - 1, install=not args.no_install)
         outputs.append(output)
     print(f"exported draw.io page previews: {len(outputs)}")
     return 0
@@ -1155,7 +1160,7 @@ def cmd_export_vsdx(args: argparse.Namespace) -> int:
     out_dir = out_dir_for(input_file)
     out_dir.mkdir(parents=True, exist_ok=True)
     output = out_dir / Path(args.output).name if args.output else out_dir / f"{input_file.stem}.vsdx"
-    export_with_drawio(input_file, output, "vsdx")
+    export_with_drawio(input_file, output, "vsdx", install=not args.no_install)
     validate_vsdx(output)
     normalize_vsdx_colors(output)
     normalize_vsdx_textxform(output)
@@ -1222,8 +1227,8 @@ def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     audit_result = audit_drawio(input_file)
     if audit_result != 0 and not args.allow_risky:
         raise SystemExit("draw.io pre-export audit failed; use --allow-risky only for a clearly marked risk build")
-    export_with_drawio(input_file, drawio_png, "png", args.width, args.page - 1)
-    export_with_drawio(input_file, vsdx_file, "vsdx")
+    export_with_drawio(input_file, drawio_png, "png", args.width, args.page - 1, install=not args.no_install)
+    export_with_drawio(input_file, vsdx_file, "vsdx", install=not args.no_install)
     validate_vsdx(vsdx_file)
     normalize_vsdx_colors(vsdx_file)
     normalize_vsdx_textxform(vsdx_file)
@@ -1369,6 +1374,12 @@ def main() -> int:
 
     preflight = sub.add_parser("preflight", help="check draw.io, Visio, screenshot, path, and output dependencies")
     preflight.add_argument("--out-dir", default="out")
+    preflight.add_argument(
+        "--task",
+        choices=["drawio-only", "preview", "html", "vsdx", "roundtrip"],
+        help="dependency scope for this run",
+    )
+    preflight.add_argument("--no-install", action="store_true", help="do not auto-install blocking draw.io dependency")
     preflight.add_argument("--json", action="store_true")
     preflight.add_argument("--strict", action="store_true")
     preflight.add_argument("--continue-with-risk", action="store_true")
@@ -1446,17 +1457,20 @@ def main() -> int:
     preview.add_argument("-o", "--output")
     preview.add_argument("--width", type=int, default=2000)
     preview.add_argument("--page", type=int, help="1-based draw.io page number to export")
+    preview.add_argument("--no-install", action="store_true", help="do not auto-install draw.io Desktop 26.0.16")
     preview.set_defaults(func=cmd_preview)
 
     preview_pages = sub.add_parser("preview-pages", help="export one PNG preview per draw.io page")
     preview_pages.add_argument("input")
     preview_pages.add_argument("--width", type=int, default=2000)
     preview_pages.add_argument("--stem")
+    preview_pages.add_argument("--no-install", action="store_true", help="do not auto-install draw.io Desktop 26.0.16")
     preview_pages.set_defaults(func=cmd_preview_pages)
 
     vsdx = sub.add_parser("export-vsdx", help="export and validate VSDX")
     vsdx.add_argument("input")
     vsdx.add_argument("-o", "--output")
+    vsdx.add_argument("--no-install", action="store_true", help="do not auto-install draw.io Desktop 26.0.16")
     vsdx.set_defaults(func=cmd_export_vsdx)
 
     val = sub.add_parser("validate-vsdx", help="validate VSDX package structure")
@@ -1504,6 +1518,7 @@ def main() -> int:
     rt.add_argument("--width", type=int, default=2000)
     rt.add_argument("--page", type=int, default=1, help="1-based Visio page number to export as the preview")
     rt.add_argument("--allow-risky", action="store_true", help="continue even if draw.io pre-export audit fails")
+    rt.add_argument("--no-install", action="store_true", help="do not auto-install draw.io Desktop 26.0.16")
     rt.set_defaults(func=cmd_roundtrip_check)
 
     args = parser.parse_args()

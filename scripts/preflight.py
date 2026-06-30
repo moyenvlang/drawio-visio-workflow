@@ -15,6 +15,9 @@ from pathlib import Path
 
 
 REQUIRED_DRAWIO_VERSION = "26.0.16"
+TASKS_REQUIRING_DRAWIO = {"preview", "vsdx", "roundtrip"}
+TASKS_REQUIRING_HTML_CAPTURE = {"html"}
+TASKS_REQUIRING_VISIO_COM = {"roundtrip"}
 
 
 @dataclass
@@ -53,6 +56,16 @@ def is_windows_or_wsl() -> bool:
 
 def windows_ps(script: str, timeout: int = 20) -> subprocess.CompletedProcess[str]:
     return run(["powershell.exe", "-NoProfile", "-Command", script], timeout=timeout)
+
+
+def winget_available() -> bool:
+    if not is_windows_or_wsl():
+        return False
+    try:
+        proc = windows_ps("winget --version", timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
 
 
 def drawio_candidates() -> list[str]:
@@ -99,7 +112,7 @@ def version_for(path: str) -> str | None:
     return None
 
 
-def check_drawio() -> Check:
+def check_drawio(no_install: bool) -> Check:
     seen: list[tuple[str, str | None]] = []
     for candidate in drawio_candidates():
         if not path_exists(candidate):
@@ -117,12 +130,28 @@ def check_drawio() -> Check:
             "Cannot reliably export final VSDX. Some newer draw.io builds may write invalid .vsdx output.",
             "Install or switch to draw.io Desktop 26.0.16.",
         )
+    if no_install:
+        return Check(
+            "drawio",
+            "blocking",
+            f"draw.io {REQUIRED_DRAWIO_VERSION} not found and --no-install is set",
+            "Cannot run draw.io preview/export steps, and automatic installation is disabled.",
+            "Install draw.io Desktop 26.0.16 manually, then rerun.",
+        )
+    if winget_available():
+        return Check(
+            "drawio",
+            "blocking",
+            f"draw.io {REQUIRED_DRAWIO_VERSION} not found",
+            "Cannot run draw.io preview/export steps until the fixed version is installed.",
+            "Automatic install is available: winget install --id JGraph.Draw --exact --version 26.0.16 --accept-package-agreements --accept-source-agreements --silent --force",
+        )
     return Check(
         "drawio",
         "blocking",
-        f"draw.io {REQUIRED_DRAWIO_VERSION} not found",
-        "Cannot reliably export final VSDX.",
-        "Install draw.io Desktop 26.0.16.",
+        f"draw.io {REQUIRED_DRAWIO_VERSION} not found and automatic install is unavailable",
+        "Cannot run draw.io preview/export steps until the fixed version is installed.",
+        "Install manually on Windows: winget install --id JGraph.Draw --exact --version 26.0.16 --accept-package-agreements --accept-source-agreements --silent --force",
     )
 
 
@@ -241,15 +270,18 @@ def check_powershell_encoding() -> Check:
     )
 
 
-def build_result(out_dir: Path) -> dict[str, object]:
+def build_result(out_dir: Path, task: str, no_install: bool) -> dict[str, object]:
     checks = [
-        check_drawio(),
-        check_visio_com(),
-        check_playwright_chromium(),
         check_output_dir(out_dir),
         check_chinese_path(out_dir),
         check_powershell_encoding(),
     ]
+    if task in TASKS_REQUIRING_DRAWIO:
+        checks.insert(0, check_drawio(no_install))
+    if task in TASKS_REQUIRING_VISIO_COM:
+        checks.append(check_visio_com())
+    if task in TASKS_REQUIRING_HTML_CAPTURE:
+        checks.append(check_playwright_chromium())
     blocking = [check for check in checks if check.status == "blocking"]
     degraded = [check for check in checks if check.status == "degraded"]
     warnings = [check for check in checks if check.status == "warning"]
@@ -263,6 +295,8 @@ def build_result(out_dir: Path) -> dict[str, object]:
         status = "ok"
     return {
         "status": status,
+        "task": task,
+        "auto_install": not no_install,
         "checks": [check.as_dict() for check in checks],
         "blocking": [check.as_dict() for check in blocking],
         "degraded": [check.as_dict() for check in degraded],
@@ -271,7 +305,7 @@ def build_result(out_dir: Path) -> dict[str, object]:
 
 
 def print_human(result: dict[str, object]) -> None:
-    print(f"preflight: {result['status']}")
+    print(f"preflight: {result['status']} (task={result['task']})")
     for check in result["checks"]:  # type: ignore[index]
         item = check  # type: ignore[assignment]
         print(f"- {item['name']}: {item['status']} - {item['message']}")
@@ -284,26 +318,39 @@ def print_human(result: dict[str, object]) -> None:
             print("Blocking:")
             for item in blocking:
                 print(f"- {item['name']}: {item['impact']}")
+            print("")
+            print("Options:")
+            print("1. Fix the environment and rerun.")
+            print("2. Reduce the requested output scope and rerun preflight with a lower --task.")
+            print("3. Stop.")
+            return
         if degraded:
             print("Can continue with reduced validation:")
             for item in degraded:
                 print(f"- {item['name']}: {item['impact']}")
-        print("")
-        print("Options:")
-        print("1. Fix the environment and rerun.")
-        print("2. Continue conversion, accepting that fidelity may be affected.")
-        print("3. Stop.")
+            print("")
+            print("Options:")
+            print("1. Install the degraded validation dependency and rerun.")
+            print("2. Continue with reduced validation, accepting that fidelity may be affected.")
+            print("3. Stop.")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-dir", type=Path, default=Path("out"))
+    parser.add_argument(
+        "--task",
+        choices=["drawio-only", "preview", "html", "vsdx", "roundtrip"],
+        default="roundtrip",
+        help="dependency scope: drawio-only, preview, html, vsdx, or roundtrip",
+    )
+    parser.add_argument("--no-install", action="store_true", help="do not auto-install blocking draw.io dependency")
     parser.add_argument("--json", action="store_true", help="print JSON only")
-    parser.add_argument("--strict", action="store_true", help="return non-zero for degraded or warning checks")
+    parser.add_argument("--strict", action="store_true", help="return non-zero for blocking or degraded dependency checks")
     parser.add_argument("--continue-with-risk", action="store_true", help="return success for degraded checks but not blocking checks")
     args = parser.parse_args()
 
-    result = build_result(args.out_dir)
+    result = build_result(args.out_dir, args.task, args.no_install)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
@@ -312,7 +359,7 @@ def main() -> int:
     status = result["status"]
     if status == "blocking":
         return 1
-    if args.strict and status != "ok":
+    if args.strict and status in {"blocking", "degraded"}:
         return 1
     if status == "degraded" and not args.continue_with_risk:
         return 2

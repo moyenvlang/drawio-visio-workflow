@@ -41,38 +41,40 @@ Before doing conversion work, read the reference file that owns the detailed pro
 
 ### Step 0. Preflight and User Choice
 
-Run preflight before conversion:
+Run preflight before conversion with the scope that matches the requested output:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preflight --out-dir out
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preflight --task roundtrip --out-dir out
 ```
 
-Preflight checks draw.io `26.0.16`, Visio COM, Python Playwright Chromium for HTML screenshots, output writability, Chinese paths, and PowerShell logging.
+Use:
 
-If the environment is incomplete, tell the user briefly:
+- `--task drawio-only` when only generating or repairing `.drawio`.
+- `--task preview` when exporting `.drawio` PNG previews.
+- `--task html` when converting HTML and checking HTML screenshot baseline capability. Run `--task preview` before exporting `.drawio` previews.
+- `--task vsdx` when exporting VSDX but not requiring a Visio COM preview in the same command.
+- `--task roundtrip` when producing VSDX plus true Visio-rendered preview validation.
 
-```text
-Environment is incomplete, but conversion may continue.
+Dependency classes:
 
-Missing:
-- Visio unavailable: cannot confirm real Visio rendering.
-- HTML screenshots unavailable: cannot automatically compare HTML source with conversion output.
+| Dependency | Required when | Missing behavior |
+|---|---|---|
+| draw.io Desktop `26.0.16` | `preview`, `preview-pages`, `export-vsdx`, `roundtrip-check` | Blocking for those steps. Automatically install only when the command truly needs it, auto-install is not disabled, and native Windows or WSL has `powershell.exe` plus `winget`. Otherwise stop with a manual install command. |
+| Visio Desktop COM | True final Visio effect validation | Degraded. VSDX export can continue, but the final response must say true Visio-rendered validation was not completed. Do not auto-install. |
+| Python Playwright Chromium | HTML source screenshot baselines | Degraded for HTML conversion. Continue only with user acceptance or non-interactive risk mode; otherwise ask the user to install it. Do not auto-install. |
+| Visual diff tooling | Automatic triage reports | Degraded. Manual visual inspection can replace automatic triage if reported. Do not auto-install. |
+| `winget` | Automatic draw.io installation | If unavailable, do not guess another installer. Stop and provide the fixed-version manual install command. |
+| Bundled Python standard-library scripts | Built-in workflow tools | Not external dependencies. Missing bundled scripts are skill installation errors. |
 
-Impact:
-Continuing can still generate files, but fidelity may be affected, especially text wrapping, position, colors, lines, and layout.
-
-Choose:
-1. Fix environment and rerun.
-2. Continue conversion, accepting possible fidelity issues.
-3. Stop.
-```
+If preflight reports degraded dependencies, tell the user what installing them adds, what continuing loses, and ask whether to install, continue with reduced validation, or stop. Do not prompt for blocking draw.io if the current command can install the fixed version safely; install it automatically unless `--no-install` is set.
 
 Rules:
 
-- Stop for blocking items unless the user explicitly chooses a reduced output such as `.drawio` only.
-- Continue through degraded items only after the user accepts that fidelity may be affected.
-- In non-interactive runs, use `--strict` to stop on any incomplete validation, or `--continue-with-risk` to continue past degraded checks.
-- Automatically install only blocking draw.io Desktop `26.0.16`, and only in supported Windows/WSL environments. Do not automatically install degraded or optional dependencies such as Visio COM, Python Playwright, or Chromium; ask the user to install them or continue with reduced validation.
+- Blocking dependencies may be installed automatically only when the current command cannot proceed without them and the install method is known, version-fixed, and controlled.
+- Degraded dependencies must not be installed automatically. Ask the user, or continue only when the user accepts reduced validation.
+- In non-interactive runs, `--strict` stops on blocking dependencies or degraded validation dependencies.
+- In non-interactive runs, `--continue-with-risk` continues past degraded checks but not blocking draw.io failures.
+- Use `--no-install` to forbid automatic installation even for blocking draw.io dependencies.
 
 ### Step 1. Identify Input Type and Page Mapping
 
@@ -192,12 +194,13 @@ Useful options:
 
 ### Step 5. Export `.drawio` Preview
 
-Check or install draw.io Desktop `26.0.16`, then export PNG. Use `references/vsdx-export.md` for the detailed CLI/version behavior. Default `ensure` may auto-install the fixed version only on native Windows Python or WSL with `powershell.exe` and `winget`; use `--no-install` for a check-only run.
+Check or install draw.io Desktop `26.0.16`, then export PNG. Use `references/vsdx-export.md` for the detailed CLI/version behavior. Preview commands need draw.io and may auto-install only the fixed version in supported Windows/WSL environments; add `--no-install` to force check-only behavior.
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py ensure
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py ensure --no-install
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --no-install
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000
 ```
 
@@ -290,12 +293,14 @@ Scripted export:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx --no-install
 ```
 
 After the Source-to-Draw.io Preview Gate has passed, prefer the round-trip command to generate the VSDX and Stage 2 preview artifacts:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000 --no-install
 ```
 
 This generates:
@@ -601,6 +606,8 @@ Export `.drawio` preview:
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --no-install
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000 --no-install
 ```
 
 Generate/update a conversion worklist:
@@ -613,12 +620,14 @@ Export VSDX:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx --no-install
 ```
 
 Run Stage 2 round-trip artifact generation after Stage 1 approval:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000 --no-install
 ```
 
 Export all Visio-rendered page previews for a multi-page VSDX:

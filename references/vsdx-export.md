@@ -2,11 +2,17 @@
 
 ## Required Version
 
-Use draw.io Desktop `26.0.16` for VSDX export.
+Use draw.io Desktop `26.0.16` for preview, VSDX export, and round-trip checks.
 
 Newer draw.io Desktop `30.x` CLI builds do not list `vsdx` in supported export formats. If forced, they may write PDF bytes to a `.vsdx` filename. That file is invalid for Visio.
 
-`drawio_cli.py ensure` checks for this fixed version and may automatically install it only on native Windows Python or WSL with `powershell.exe` and `winget`. Use `--no-install` for check-only validation. On unsupported environments, fail with a manual install prompt; do not guess macOS, Linux, snap, flatpak, or Homebrew commands.
+Dependency behavior:
+
+- draw.io Desktop `26.0.16` is a blocking dependency only for commands that actually need draw.io: `preview`, `preview-pages`, `export-vsdx`, and `roundtrip-check`.
+- Those commands may automatically install only the fixed draw.io version, and only on native Windows Python or WSL with `powershell.exe` and `winget`.
+- Use `--no-install` on `ensure`, `preview`, `preview-pages`, `export-vsdx`, or `roundtrip-check` to forbid automatic installation.
+- If `winget` or PowerShell is unavailable, stop and provide the manual fixed-version install command. Do not guess macOS, Linux, snap, flatpak, or Homebrew commands.
+- Visio Desktop COM is a degraded validation dependency. If it is unavailable, VSDX export can still complete, but true Visio-rendered preview validation must be reported as unavailable.
 
 ## Windows Paths
 
