@@ -64,6 +64,28 @@ Use the same source rules for newly generated and repaired diagrams. New diagram
 
 Do not use `repair-drawio` as a routine step for newly generated diagrams. If a new file needs repair, the generation structure was wrong and should be corrected.
 
+## Existing .drawio Repair Loop
+
+When converting or optimizing an existing `.drawio`, keep the original file unchanged and write repaired candidates to `out/`.
+
+Run `audit-drawio` before VSDX export. If it blocks on recognizable composite labels, HTML-only bolding, placeholder text, or white-on-color label structure, use the bundled repair helper for up to 3 passes:
+
+```bash
+mkdir -p out
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired1.drawio -o out/input.repaired2.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired2.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired2.drawio -o out/input.repaired3.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired3.drawio
+```
+
+Stop as soon as one repaired file passes `audit-drawio`; use that file for preview and export. Keep only the selected repaired `.drawio` in `out/` and delete unused failed repair-pass files. If the third pass still fails, stop automatic repair and perform targeted manual/model edits or report the remaining blockers. Never overwrite the original file.
+
+The helper is conservative: it handles recognizable title/description and overlay/title/description labels, then leaves uncertain cases for manual edits.
+
+After any source repair, export the original `.drawio` page previews and compare them with the repaired or optimized previews as the Stage 1 baseline. Preserve layout, layer structure, colors, title hierarchy, badges, card sizing, section color strips, and overall proportions. Do not add arrows, flow lines, relationship labels, or structural elements unless the source diagram already has them or the user asks for them.
+
 ## Composite Label and Text Source Rules
 
 Source text structure is part of `.drawio` generation, not a post-export repair strategy. Build or repair the source so Visio does not need to infer meaning from HTML label structure.

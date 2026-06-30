@@ -192,21 +192,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio
 
 Block final delivery if `audit-drawio` reports high-risk source structures. The exact blocked structures and source fixes are defined in `references/drawio-generation.md`. If a risky file is still useful for inspection, generate it only as a clearly marked risk build.
 
-For common composite labels, use the bundled repair helper to create new `.drawio` files for up to 3 passes:
-
-```bash
-mkdir -p out
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired1.drawio -o out/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired2.drawio -o out/input.repaired3.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired3.drawio
-```
-
-Stop as soon as one repaired file passes `audit-drawio`; use that file for preview and export. Keep only the selected repaired `.drawio` in `out/` and delete unused failed repair-pass files. If the third pass still fails, stop automatic repair and perform targeted manual/model edits or report the remaining blockers. Never overwrite the original file.
-
-The helper is conservative: it handles recognizable title/description and overlay/title/description labels, then leaves uncertain cases for manual edits.
+If the audit fails, return to the source repair loop in `references/drawio-generation.md`. This export reference does not own `.drawio` repair pass sequencing.
 
 After each export-fidelity pass:
 

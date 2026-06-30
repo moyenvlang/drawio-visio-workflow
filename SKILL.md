@@ -169,9 +169,8 @@ Step check:
 
 If the audit fails:
 
-- For new diagrams, fix the generated `.drawio` source directly and rerun the audit.
-- For existing diagrams, run `repair-drawio` for up to 3 passes. Use the first repaired file that passes audit.
-- If the third repaired output still fails, stop automatic repair and perform targeted manual/model edits or report the remaining blockers.
+- Treat this as a source-side gate failure.
+- Follow the source repair loop in `references/drawio-generation.md`.
 - Use `--allow-risky` only for a clearly marked risk build, not for a final deliverable.
 
 For targeted geometry, value, or style edits, use the bundled patch tool instead of one-off decode/edit/re-encode scripts:
@@ -300,28 +299,21 @@ After the Source-to-Draw.io Preview Gate has passed, prefer the round-trip comma
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000 --no-install
 ```
 
-This generates:
-
-- `out/output-name.vsdx`
-- `out/output-name.drawio-preview.png`
-- `out/output-name.visio-preview.png`
-
-`roundtrip-check` runs `audit-drawio`, exports the `.drawio` preview, exports and validates the VSDX, normalizes VSDX color/TextXForm cells, and exports the Visio COM preview. It does not compare the input-specific Stage 1 baseline against the `.drawio` preview; do that before calling it for a final deliverable. If its audit fails, do not bypass it for a final deliverable.
+`roundtrip-check` is called only after Stage 1 source approval, and it does not replace the input-specific Stage 1 comparison. See `references/vsdx-export.md` for its detailed responsibilities and outputs.
 
 For multi-page files, use `export-vsdx` plus `preview-pages` and `visio-preview-pages` so every page has explicit Stage 1 and Stage 2 artifacts. `roundtrip-check` is a targeted single-page helper unless run separately for each relevant page.
 
 ### Step 8. Normalize and Validate VSDX
 
-`export-vsdx` and `roundtrip-check` normalize VSDX color cells after export. Follow `references/vsdx-export.md` for exact color and package rules. If needed, run normalization directly:
+Normalize VSDX color cells before final validation. Follow `references/vsdx-export.md` for exact color and package rules. If needed, run normalization directly:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py normalize-vsdx-colors output.vsdx
 ```
 
-Color rule: preserve `V="#RRGGBB"`, add `F="RGB(r,g,b)"`, do not delete `V`, and do not replace `V` with `RGB(...)`.
+Color gate: VSDX color cells must be normalized before final validation. See `references/vsdx-export.md` for the detailed rule.
 
 Validate:
 
@@ -445,28 +437,11 @@ Use when converting or optimizing an existing draw.io file.
 Steps:
 
 1. Keep the original file unchanged.
-2. Audit the original file and follow the repair/optimization rules in `references/drawio-generation.md` and `references/vsdx-export.md`.
-3. If the structure is recognizable and the audit fails, run `repair-drawio` for up to 3 passes.
-4. Each repair pass must write a new file, run `audit-drawio`, and stop immediately once the audit passes.
-5. Use the first repaired `.drawio` that passes audit for preview and VSDX export.
-6. Preserve layout, layer structure, colors, title hierarchy, badges, card sizing, section color strips, and overall proportions; do not add new arrows, flow lines, relationship labels, or structural elements unless the source diagram already has them or the user asks for them.
-7. Export the original `.drawio` preview and compare the optimized preview against it.
-8. Export and validate VSDX only after the Source-to-Draw.io Preview Gate passes.
-9. Compare the Visio-rendered preview against the Stage 1-approved optimized `.drawio` preview.
-
-Repair commands:
-
-```bash
-mkdir -p out
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired1.drawio -o out/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired2.drawio -o out/input.repaired3.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired3.drawio
-```
-
-Keep only the selected repaired `.drawio` in `out/`; delete unused failed repair-pass files. Never overwrite the original `.drawio`.
+2. Audit the original file and follow the existing-file repair loop in `references/drawio-generation.md`.
+3. Preserve layout, layer structure, colors, title hierarchy, badges, card sizing, section color strips, and overall proportions; do not add new arrows, flow lines, relationship labels, or structural elements unless the source diagram already has them or the user asks for them.
+4. Export the original `.drawio` preview and compare the optimized preview against it.
+5. Export and validate VSDX only after the Source-to-Draw.io Preview Gate passes.
+6. Compare the Visio-rendered preview against the Stage 1-approved optimized `.drawio` preview.
 
 ### C. HTML Source
 
@@ -545,26 +520,13 @@ Use `references/vsdx-export.md` for the full export, normalization, visual check
 
 Draw.io may export color cells as hex-only values such as `V="#ffffff"`, which can render incorrectly in Visio Desktop.
 
-Gate: after VSDX export, preserve `V="#RRGGBB"`, add `F="RGB(r,g,b)"`, do not delete `V`, do not replace `V` with `RGB(...)`, and apply this to text, fill, line, and other VSDX color cells before final validation.
+Gate: normalize VSDX color cells after export and before final validation. The detailed rule belongs to `references/vsdx-export.md`.
 
 ### TextXForm
 
 If a shape's selection box is correct but its text renders offset in Visio, check the VSDX `TextXForm`, not only the draw.io geometry.
 
-Gate: for normal titles, labels, plain text boxes, wide text boxes, and Chinese headings that should fill and center within their shape, normalize:
-
-- `TxtPinX=Width/2`
-- `TxtPinY=Height/2`
-- `TxtWidth=Width`
-- `TxtHeight=Height`
-- `TxtLocPinX=Width/2`
-- `TxtLocPinY=Height/2`
-
-Do not apply this blindly to:
-
-- vertical text, side-axis text, connectors, edge labels, rotated text, callouts, intentionally offset annotations, or complex grouped shapes
-
-After changing `TextXForm`, export a Visio COM PNG preview and compare it with the `.drawio` preview.
+Gate: normalize `TextXForm` only for appropriate text shapes, then export a Visio COM PNG preview and compare it with the `.drawio` preview. The detailed rule and exclusions belong to `references/vsdx-export.md`.
 
 ## 6. Command Reference
 
@@ -572,10 +534,7 @@ Ensure draw.io Desktop `26.0.16`:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py ensure
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py ensure --no-install
 ```
-
-When draw.io is missing, the default `ensure` command installs only on native Windows Python or WSL with `powershell.exe` and `winget`. Unsupported environments must install manually; do not guess macOS, Linux, snap, flatpak, or Homebrew commands.
 
 Manual Windows install command:
 
@@ -606,8 +565,6 @@ Export `.drawio` preview:
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --no-install
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000 --no-install
 ```
 
 Generate/update a conversion worklist:
@@ -620,14 +577,12 @@ Export VSDX:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx --no-install
 ```
 
-Run Stage 2 round-trip artifact generation after Stage 1 approval:
+Stage 2 round-trip artifact generation:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000 --no-install
 ```
 
 Export all Visio-rendered page previews for a multi-page VSDX:
@@ -669,11 +624,9 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-text o
 
 ### `audit-drawio` Fails
 
-- New diagram: fix the `.drawio` source directly.
-- Existing diagram: run `repair-drawio` for up to 3 passes.
-- Third pass still fails: stop automatic repair and report blockers or perform targeted manual/model edits.
+- Treat this as a source-side gate failure.
+- Follow `references/drawio-generation.md` for new-diagram source fixes, existing-diagram repair, and unresolved blockers.
 - Do not call a risky export final. Use `--allow-risky` only for an explicitly labeled risk build.
-- See `references/vsdx-export.md` for the pre-export audit and blocking details.
 
 ### `.drawio` Preview Differs From Source
 
@@ -699,16 +652,13 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-text o
 
 ### Bold Text Is Lost
 
-- Do not rely only on HTML `<b>`.
-- Split the heading into an independent text cell.
-- Use `fontStyle=1`.
-- Rerun `roundtrip-check` and `audit-text`.
+- Treat this as a source text-structure failure.
+- Follow `references/drawio-generation.md` for source fixes and `references/vsdx-export.md` for VSDX verification.
 
 ### Text Is Offset in Visio
 
-- Check VSDX `TextXForm`.
-- Normalize text pin and size only for normal labels and headings.
-- Do not apply blindly to rotated text, connectors, edge labels, vertical text, side-axis text, or intentional annotations.
+- Treat this as a VSDX `TextXForm` gate failure.
+- Follow `references/vsdx-export.md` for normalization details and exclusions.
 
 ## 8. Useful References
 
