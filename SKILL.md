@@ -37,7 +37,7 @@ Before doing conversion work, read the reference file that owns the detailed pro
 - Support both native Windows Python and WSL-on-Windows execution. When calling Windows applications from WSL, convert WSL paths to Windows paths.
 - Delete temporary files, comparison pages, unpacked folders, validation scratch files, and failed intermediate repair outputs after use.
 - On successful delivery, delete `out/.tmp/<run-id>` and remove the empty `out/.tmp` parent when possible. On failure, keep `out/.tmp/<run-id>` for debugging and report its path.
-- Before marking cleanup complete, run deliverables-only final cleanup on `out/`; the root `out/` folder must contain only the final validated `.drawio` and `.vsdx` for the requested stem.
+- Before marking cleanup complete, run final cleanup on `out/`; by default it keeps only the final validated `.drawio` and `.vsdx` for the requested stem.
 - Use bundled scripts for repeatable conversion work; do not leave one-off conversion scripts in the user's `out/` folder.
 
 ## 2. End-to-End Workflow
@@ -102,7 +102,7 @@ After the input-specific preparation, all paths rejoin the common workflow below
 
 Create an `out/` folder beside the source file.
 
-Create a scratch directory and generate a conversion worklist inside it before heavy conversion/export work:
+Create a scratch directory under `out/.tmp/<run-id>` and generate a conversion worklist inside it before heavy conversion/export work:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out
@@ -128,13 +128,7 @@ Check:
 - The worklist records source page/container, draw.io page, temporary source screenshot baseline, draw.io preview, Visio preview, and required validation checks.
 - Scratch files are not retained as deliverables.
 
-Create scratch directories only under `out/.tmp/<run-id>`:
-
-```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out
-```
-
-Use the created `out/.tmp/<run-id>/` for all Stage 1/Stage 2 previews, worklists, reports, diff files, HTML screenshots, failed repair candidates, and other cache files. Keep scratch files only when a failure needs debugging. On successful delivery, remove scratch files and run `final-clean --deliverables-only` so `out/` keeps only the final validated `.drawio` and `.vsdx`.
+Use the created `out/.tmp/<run-id>/` for all Stage 1/Stage 2 previews, worklists, reports, diff files, HTML screenshots, failed repair candidates, and other cache files. Keep scratch files when conversion or validation fails. On successful delivery, remove scratch files and run `final-clean` so `out/` keeps only the final validated `.drawio` and `.vsdx`.
 
 ### Step 3. Generate or Repair `.drawio`
 
@@ -423,13 +417,13 @@ Check:
 - `audit-drawio` passed, or the file is clearly marked as a risk build.
 - `validate-vsdx` passed.
 - draw.io Desktop version used was `26.0.16`.
-- On success, `scratch-clean` removed `out/.tmp/<run-id>` and `final-clean out --stem <stem> --deliverables-only --apply` removed root-level non-deliverable files from `out/`. On failure, scratch was retained and reported.
+- On success, `scratch-clean` removed `out/.tmp/<run-id>` and `final-clean out --stem <stem> --apply` removed root-level non-deliverable files from `out/`. On failure, scratch was retained and reported.
 
 Final cleanup commands, only after all required validation gates pass:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-clean out/.tmp/<run-id>
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py final-clean out --stem <stem> --deliverables-only --apply
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py final-clean out --stem <stem> --apply
 ```
 
 ## 3. Input Paths
@@ -467,9 +461,10 @@ Steps:
 2. First look for embedded draw.io data: `<mxfile>`, `<mxGraphModel>`, `data-mxgraph`, compressed diagram payloads, or script-embedded graph data.
 3. If embedded draw.io data exists, extract it and convert it into a normal `.drawio`; otherwise rebuild from DOM and CSS layout semantics.
 4. Use `scripts/html_to_drawio.py` for supported semantic diagram containers; otherwise perform targeted source mapping.
-5. Generate a worklist that maps every semantic diagram container to a draw.io page.
-6. Render each source HTML diagram container to a browser reference screenshot; for `.figure`-based HTML, screenshot each figure independently.
-7. Use those per-container screenshots only as Stage 1 baselines. After Stage 1 passes for every mapped page, use the compliant `.drawio` previews as Stage 2 baselines.
+5. Write the first generated HTML-conversion `.drawio` as a candidate under `out/.tmp/<run-id>/`.
+6. Generate a worklist that maps every semantic diagram container to a draw.io page.
+7. Render each source HTML diagram container to a browser reference screenshot; for `.figure`-based HTML, screenshot each figure independently.
+8. Use those per-container screenshots only as Stage 1 baselines. After Stage 1 passes for every mapped page, promote the selected candidate to `out/<stem>.drawio`, validate that final path, and use the compliant `.drawio` previews as Stage 2 baselines.
 
 HTML mapping rules:
 
@@ -632,6 +627,19 @@ Audit important text:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-text output.vsdx --text "Important Heading"
+```
+
+Final cleanup after successful validation:
+
+```bash
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-clean out/.tmp/<run-id>
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py final-clean out --stem <stem> --apply
+```
+
+Retain root-level evidence only for debugging:
+
+```bash
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py final-clean out --stem <stem> --keep-evidence --apply
 ```
 
 ## 7. Common Failure Handling

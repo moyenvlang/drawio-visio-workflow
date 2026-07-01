@@ -175,14 +175,25 @@ If no embedded draw.io graph exists and the HTML itself is the diagram source, r
 - Prefer the bundled converter for supported semantic HTML architecture diagrams:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/html_to_drawio.py input.html -o out/input.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/html_to_drawio.py input.html -o out/.tmp/<run-id>/input.candidate.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_codec.py validate out/.tmp/<run-id>/input.candidate.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/.tmp/<run-id>/input.candidate.drawio
 ```
 
 The converter supports HTML that uses semantic containers such as `figure`, `canvas`, `layer`, `grid`, `card`, `axis`, `bus`, `tech-axis`, `data-flow`, and `desc`. If those containers are missing, do targeted source mapping instead of leaving a one-off conversion script in `out/`.
+- After the candidate passes source validation and Stage 1 checks, promote it to the final deliverable path and validate that final path before VSDX export:
+
+```bash
+cp out/.tmp/<run-id>/input.candidate.drawio out/<stem>.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_codec.py validate out/<stem>.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/<stem>.drawio
+```
+
 - Generate a worklist before or immediately after conversion:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist input.html --drawio out/input.drawio --out-dir out/.tmp/<run-id>
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist input.html --drawio out/.tmp/<run-id>/input.candidate.drawio --out-dir out/.tmp/<run-id>
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist input.html --drawio out/<stem>.drawio --out-dir out/.tmp/<run-id>
 ```
 
 - For `.figure`-based HTML, map each figure `id` and figure title to the same-order draw.io page. If the number of figures and draw.io pages differs, stop and repair the mapping before VSDX export.

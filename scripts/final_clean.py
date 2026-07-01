@@ -54,16 +54,21 @@ def main() -> int:
     parser.add_argument(
         "--deliverables-only",
         action="store_true",
-        help="keep only the final validated .drawio and .vsdx files",
+        help="compatibility no-op; deliverables-only cleanup is the default",
+    )
+    parser.add_argument(
+        "--keep-evidence",
+        action="store_true",
+        help="also keep root-level worklist and preview evidence; use only for debugging or failed runs",
     )
     parser.add_argument("--apply", action="store_true", help="delete non-whitelisted files; default is dry-run")
     args = parser.parse_args()
 
-    patterns = DELIVERABLE_KEEP_PATTERNS if args.deliverables_only else EVIDENCE_KEEP_PATTERNS
+    patterns = EVIDENCE_KEEP_PATTERNS if args.keep_evidence else DELIVERABLE_KEEP_PATTERNS
     keep, remove = scan(args.out_dir, args.stem, patterns)
     print(f"final-clean: out_dir={args.out_dir} stem={args.stem}")
     print("scope: all root files")
-    print("mode: deliverables-only" if args.deliverables_only else "mode: evidence-retaining")
+    print("mode: evidence-retaining" if args.keep_evidence else "mode: deliverables-only")
     print("keep:")
     for path in keep:
         print(f"  {path}")

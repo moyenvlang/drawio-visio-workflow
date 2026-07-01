@@ -14,20 +14,22 @@
 
 ## 核心流程
 
-1. 从图片、`.drawio` 或 HTML 转换/重建 VSDX-friendly `.drawio` 文件。
-2. 导出 PNG 预览图，确认 draw.io 中的视觉效果。
-3. 使用 draw.io Desktop `26.0.16` 导出 VSDX。
-4. 校验 VSDX 是否是真正的 Visio ZIP 包。
-5. 将 VSDX 再渲染成 PNG，与 `.drawio` 预览图进行对比。
-6. 对关键文本做加粗、颜色等样式检查。
+1. 在 `out/.tmp/<run-id>/` 中从图片、`.drawio` 或 HTML 转换/重建候选 VSDX-friendly `.drawio` 文件。
+2. 导出 PNG 预览图到 `out/.tmp/<run-id>/`，确认 draw.io 中的视觉效果。
+3. 候选 `.drawio` 验证通过后，提升为 `out/<stem>.drawio` 并重新验证最终路径。
+4. 使用 draw.io Desktop `26.0.16` 从最终 `.drawio` 导出 `out/<stem>.vsdx`。
+5. 校验 VSDX 是否是真正的 Visio ZIP 包。
+6. 将 VSDX 再渲染成 PNG 到 `out/.tmp/<run-id>/`，与 `.drawio` 预览图进行对比。
+7. 对关键文本做加粗、颜色等样式检查。
+8. 成功时删除 `out/.tmp/<run-id>/`，最终 `out/` 只保留 `.drawio` 和 `.vsdx`；失败时保留 `out/.tmp/<run-id>/` 供排查。
 
 ## 关键规则
 
 - `.drawio` 是唯一可编辑源文件。
 - 原始 `.drawio` 文件保留在原位置。
-- 转换或修复后的 `.drawio` 文件放入原文件同级的 `out/` 文件夹。
-- 导出的 `.vsdx` 文件和截图/预览图片也放入 `out/` 文件夹。
-- 临时文件、中间失败修复文件、对比页、解包目录等用完后删除，不保留。
+- 只有最终验证通过的 `.drawio` 和 `.vsdx` 文件放入原文件同级的 `out/` 文件夹。
+- 截图、预览图、worklist、对比报告、diff、中间失败修复文件、解包目录等证据文件放入 `out/.tmp/<run-id>/`。
+- 成功交付后删除 `out/.tmp/<run-id>/`；转换或验证失败时保留 `out/.tmp/<run-id>/` 供排查。
 - VSDX 导出必须使用 draw.io Desktop `26.0.16`。
 - 不使用 draw.io `30.x` CLI 作为最终 VSDX 导出工具。
 - 对需要在 Visio 中保持加粗、换行、白色文字等效果的文本，尽量拆成独立 `mxCell`，避免依赖复杂 HTML 标签。
@@ -70,19 +72,21 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py ensure
 生成 `.drawio` 预览图：
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000
+RUN_DIR=$(python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out)
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --out-dir "$RUN_DIR"
 ```
 
 导出并校验 VSDX：
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o out/<stem>.vsdx
 ```
 
 执行完整的 VSDX 往返校验：
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000
+RUN_DIR=$(python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out)
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000 --evidence-dir "$RUN_DIR"
 ```
 
 ## 输出约定
@@ -97,10 +101,19 @@ project/diagram.drawio
 
 ```text
 project/out/
-├── diagram.repaired.drawio
-├── diagram.vsdx
-├── diagram.drawio-preview.png
-└── diagram.vsdx-preview.png
+├── diagram.drawio
+└── diagram.vsdx
+```
+
+如果转换或验证失败，排查证据保留在：
+
+```text
+project/out/.tmp/<run-id>/
+├── *.worklist.json
+├── *.drawio-page1.png
+├── *.visio-page1.png
+├── *.stage1-*.json
+└── *.stage2-*.json
 ```
 
 原始文件仍保留在：

@@ -150,7 +150,7 @@ def default_checks() -> list[dict[str, str]]:
         {"id": "visio_previews", "label": "All Visio COM page previews were exported, or unavailability was reported.", "status": "pending", "message": ""},
         {"id": "stage2", "label": "Stage 2 drawio-to-Visio validation completed per page.", "status": "pending", "message": ""},
         {"id": "important_text", "label": "Important text styling was audited where relevant.", "status": "pending", "message": ""},
-        {"id": "scratch_cleanup", "label": "Scratch files and failed intermediate outputs were removed.", "status": "pending", "message": ""},
+        {"id": "scratch_cleanup", "label": "Scratch was removed on success or retained on failure for debugging.", "status": "pending", "message": ""},
     ]
 
 

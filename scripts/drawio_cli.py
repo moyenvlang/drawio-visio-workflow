@@ -1320,6 +1320,8 @@ def cmd_final_clean(args: argparse.Namespace) -> int:
     cmd = [sys.executable, str(script_path("final_clean.py")), args.out_dir, "--stem", args.stem]
     if args.deliverables_only:
         cmd.append("--deliverables-only")
+    if args.keep_evidence:
+        cmd.append("--keep-evidence")
     if args.apply:
         cmd.append("--apply")
     proc = run(cmd, check=False)
@@ -1452,7 +1454,12 @@ def main() -> int:
     final_clean.add_argument(
         "--deliverables-only",
         action="store_true",
-        help="keep only final validated .drawio and .vsdx deliverables",
+        help="compatibility no-op; deliverables-only cleanup is the default",
+    )
+    final_clean.add_argument(
+        "--keep-evidence",
+        action="store_true",
+        help="also keep root-level worklist and preview evidence for debugging",
     )
     final_clean.add_argument("--apply", action="store_true", help="delete files; default is dry-run")
     final_clean.set_defaults(func=cmd_final_clean)
