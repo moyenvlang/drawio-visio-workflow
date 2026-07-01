@@ -66,7 +66,7 @@ Do not use `repair-drawio` as a routine step for newly generated diagrams. If a 
 
 ## Existing .drawio Repair Loop
 
-When converting or optimizing an existing `.drawio`, keep the original file unchanged and write repaired candidates to `out/`.
+When converting or optimizing an existing `.drawio`, keep the original file unchanged and write repaired candidates under `out/.tmp/<run-id>/`. Promote only the selected validated file to `out/<stem>.drawio`.
 
 Run `audit-drawio` before VSDX export. If it blocks on recognizable composite labels, HTML-only bolding, placeholder text, or white-on-color label structure, use the bundled repair helper for up to 3 passes:
 

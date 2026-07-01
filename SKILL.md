@@ -132,8 +132,6 @@ Create scratch directories only under `out/.tmp/<run-id>`:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-clean out/.tmp/<run-id>
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py final-clean out --stem <stem> --deliverables-only --apply
 ```
 
 Use the created `out/.tmp/<run-id>/` for all Stage 1/Stage 2 previews, worklists, reports, diff files, HTML screenshots, failed repair candidates, and other cache files. Keep scratch files only when a failure needs debugging. On successful delivery, remove scratch files and run `final-clean --deliverables-only` so `out/` keeps only the final validated `.drawio` and `.vsdx`.
@@ -187,7 +185,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py patch-drawio
   --match-text "SaaS" \
   --match-style-contains techlabel \
   --set x=36 --set width=84 \
-  -o out/input.patched.drawio
+  -o out/.tmp/<run-id>/input.patched.drawio
 ```
 
 Useful options:
@@ -297,9 +295,11 @@ Use only draw.io Desktop `26.0.16` for VSDX export. Follow `references/vsdx-expo
 Scripted export:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx --no-install
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o out/<stem>.vsdx
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o out/<stem>.vsdx --no-install
 ```
+
+When `-o` is only a filename, `export-vsdx` writes that basename to the source file's sibling `out/` directory. Use an explicit `out/<stem>.vsdx` path when documenting final deliverables.
 
 After the Source-to-Draw.io Preview Gate has passed, prefer the round-trip command to generate the VSDX and Stage 2 preview artifacts:
 
@@ -424,6 +424,13 @@ Check:
 - `validate-vsdx` passed.
 - draw.io Desktop version used was `26.0.16`.
 - On success, `scratch-clean` removed `out/.tmp/<run-id>` and `final-clean out --stem <stem> --deliverables-only --apply` removed root-level non-deliverable files from `out/`. On failure, scratch was retained and reported.
+
+Final cleanup commands, only after all required validation gates pass:
+
+```bash
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-clean out/.tmp/<run-id>
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py final-clean out --stem <stem> --deliverables-only --apply
+```
 
 ## 3. Input Paths
 
@@ -583,7 +590,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist sou
 Export VSDX:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o output.vsdx
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o out/<stem>.vsdx
 ```
 
 Stage 2 round-trip artifact generation:
