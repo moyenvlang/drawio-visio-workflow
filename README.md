@@ -1,129 +1,86 @@
 # Draw.io Visio Workflow Skill
 
-这是一个用于将图片、`.drawio`、HTML 格式的流程图或架构图高保真转换为 Visio `.vsdx` 文件的 Codex Skill。
+把流程图、架构图、系统图更可靠地交付成可编辑的 Microsoft Visio `.vsdx` 文件。
 
-它的核心目标是：解决好看的流程图、框架图、架构图在导出到 Visio 后难以高度还原的问题。它会把图片、已有 `.drawio` 或 HTML 中的图转换/重建为适合 VSDX 导出的 `.drawio` 源文件；先导出预览图确认效果，再使用 draw.io Desktop `26.0.16` 导出真正可用的 Microsoft Visio `.vsdx` 文件，并对导出结果做结构和视觉校验。
+这个 Codex Skill 面向经常需要在 draw.io、HTML 图表、截图和 Visio 之间转换图件的人：售前、咨询顾问、产品经理、架构师、工程团队、文档交付团队，以及需要把方案图纳入正式文档、投标材料或客户交付物的团队。
 
-## 适用场景
+## 它解决什么问题
 
-- 图片转 VSDX：根据截图、图片或视觉参考重建可编辑的 `.drawio` 流程图，再导出为高保真的 `.vsdx`。
-- `.drawio` 转 VSDX：优化已有 `.drawio`，减少导出后字体、加粗、颜色、圆角、换行、布局、文字位置等偏差。
-- HTML 转 VSDX：从 HTML 中提取或转换 draw.io 图数据，生成更适合 VSDX 导出的 `.drawio` 文件，再导出为 `.vsdx`。
-- 高保真还原：尽量保持原图的布局、配色、标题层级、卡片结构、徽章、文字样式和整体观感。
-- 导出与校验：使用 draw.io Desktop `26.0.16` 导出真正的 Visio `.vsdx`，并通过预览图和结构校验确认结果。
+很多图在网页、PPT、截图或 draw.io 里看起来很好，但一到 Visio 里就会出现：
 
-## 核心流程
+- 字体变形、中文换行异常
+- 加粗、白字、颜色、圆角丢失
+- 卡片、泳道、分层结构错位
+- 只能交付图片，客户无法继续编辑
+- 手工重画成本高，且版本越改越不稳定
 
-1. 在 `out/.tmp/<run-id>/` 中从图片、`.drawio` 或 HTML 转换/重建候选 VSDX-friendly `.drawio` 文件。
-2. 导出 PNG 预览图到 `out/.tmp/<run-id>/`，确认 draw.io 中的视觉效果。
-3. 候选 `.drawio` 验证通过后，提升为 `out/<stem>.drawio` 并重新验证最终路径。
-4. 使用 draw.io Desktop `26.0.16` 从最终 `.drawio` 导出 `out/<stem>.vsdx`。
-5. 校验 VSDX 是否是真正的 Visio ZIP 包。
-6. 将 VSDX 再渲染成 PNG 到 `out/.tmp/<run-id>/`，与 `.drawio` 预览图进行对比。
-7. 对关键文本做加粗、颜色等样式检查。
-8. 成功时删除 `out/.tmp/<run-id>/`，最终 `out/` 只保留 `.drawio` 和 `.vsdx`；失败时保留 `out/.tmp/<run-id>/` 供排查。
+这个 Skill 的目标是把这些图转换成更适合 Visio 使用的可编辑文件，减少重复手工修图，让最终交付更稳定。
 
-## 关键规则
+## 能带来什么价值
 
-- `.drawio` 是唯一可编辑源文件。
-- 原始 `.drawio` 文件保留在原位置。
-- 只有最终验证通过的 `.drawio` 和 `.vsdx` 文件放入原文件同级的 `out/` 文件夹。
-- 截图、预览图、worklist、对比报告、diff、中间失败修复文件、解包目录等证据文件放入 `out/.tmp/<run-id>/`。
-- 成功交付后删除 `out/.tmp/<run-id>/`；转换或验证失败时保留 `out/.tmp/<run-id>/` 供排查。
-- VSDX 导出必须使用 draw.io Desktop `26.0.16`。
-- 不使用 draw.io `30.x` CLI 作为最终 VSDX 导出工具。
-- 对需要在 Visio 中保持加粗、换行、白色文字等效果的文本，尽量拆成独立 `mxCell`，避免依赖复杂 HTML 标签。
-- VSDX 导出后会对颜色单元做归一化：保留 `V="#RRGGBB"`，并补充 `F="RGB(r,g,b)"`。
-- 对标题/标签文字在 Visio 中出现“选框位置正确但文字显示偏移”的情况，按 TextXForm 规则修正文本块锚点，并重新渲染预览图对比。
+- 将截图、HTML 图、draw.io 图转成可继续编辑的 Visio 文件
+- 保留架构图常见的层级、卡片、分组、标签和说明区域
+- 降低 draw.io 导出 Visio 后的字体、颜色、换行和位置偏差
+- 让交付目录更干净：成功后只保留最终 `.drawio` 和 `.vsdx`
+- 适合批量整理方案图、架构图、系统图和技术文档图件
 
-## 包含内容
+## 适合谁用
+
+- 需要向客户交付 Visio 源文件的售前和咨询团队
+- 需要维护系统架构图、数据架构图、技术路线图的架构师
+- 需要把 HTML/网页图表整理成正式交付物的文档团队
+- 需要从截图或旧图中重建可编辑图件的项目团队
+- 使用 Codex 处理技术文档、图件转换和交付材料的开发者
+
+## 支持的输入
+
+- `.drawio` 文件
+- HTML 中的图表或架构图
+- 图片、截图、视觉参考
+- 新建图件需求描述
+
+## 输出结果
+
+成功转换后，交付目录只保留最终文件：
 
 ```text
-drawio-visio-workflow/
-├── SKILL.md
-├── agents/
-│   └── openai.yaml
-├── references/
-│   ├── drawio-generation.md
-│   └── vsdx-export.md
-└── scripts/
-    ├── drawio_cli.py
-    └── drawio_codec.py
+out/
+├── <name>.drawio
+└── <name>.vsdx
 ```
 
-## 安装方式
+`.drawio` 是可编辑源文件，`.vsdx` 是最终 Visio 交付文件。
 
-将本仓库克隆到 Codex skills 目录：
+## 安装
+
+克隆到 Codex skills 目录：
 
 ```bash
 git clone https://github.com/moyenvlang/drawio-visio-workflow.git ~/.codex/skills/drawio-visio-workflow
 ```
 
-然后在 Codex 中提出与 draw.io、流程图、架构图、VSDX 导出相关的任务即可触发使用。
-
-## 常用脚本
-
-检查或安装 draw.io Desktop `26.0.16`：
-
-```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py ensure
-```
-
-生成 `.drawio` 预览图：
-
-```bash
-RUN_DIR=$(python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out)
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --out-dir "$RUN_DIR"
-```
-
-导出并校验 VSDX：
-
-```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx input.drawio -o out/<stem>.vsdx
-```
-
-执行完整的 VSDX 往返校验：
-
-```bash
-RUN_DIR=$(python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out)
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000 --evidence-dir "$RUN_DIR"
-```
-
-## 输出约定
-
-假设原文件为：
+然后在 Codex 中提出类似任务：
 
 ```text
-project/diagram.drawio
+把这个 HTML 架构图转成 VSDX
 ```
-
-最终交付文件会放在：
 
 ```text
-project/out/
-├── diagram.drawio
-└── diagram.vsdx
+把这张系统架构图截图重建成可编辑 Visio 文件
 ```
-
-如果转换或验证失败，排查证据保留在：
 
 ```text
-project/out/.tmp/<run-id>/
-├── *.worklist.json
-├── *.drawio-page1.png
-├── *.visio-page1.png
-├── *.stage1-*.json
-└── *.stage2-*.json
+优化这个 draw.io 文件并导出高保真 VSDX
 ```
 
-原始文件仍保留在：
+## 环境要求
 
-```text
-project/diagram.drawio
-```
+- Codex
+- draw.io Desktop `26.0.16`
+- 如需真实 Visio 效果校验：Windows + Microsoft Visio Desktop
 
-## 注意事项
+Skill 会在执行时检查依赖，并在缺少必要组件时给出处理建议。
 
-这个仓库的 README 用于 GitHub 展示说明；真正供 Codex 加载和执行的 skill 入口是 `SKILL.md`。
+## 说明
 
-如果只验证 VSDX 是否是 ZIP 包，仍然可能漏掉字体、加粗、颜色、换行等视觉问题。因此本 skill 要求导出后再渲染 VSDX 预览图，并与 `.drawio` 预览图进行对比。
+这个 README 只介绍用途、价值和安装方式。详细执行流程、校验策略和内部约束由 Codex 读取 `SKILL.md` 和 `references/` 中的说明完成。
