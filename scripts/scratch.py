@@ -22,6 +22,9 @@ def cleanup_scratch(path: Path) -> None:
         raise SystemExit(f"refusing to remove non-scratch path: {path}")
     if resolved.exists():
         shutil.rmtree(resolved)
+    parent = resolved.parent
+    if parent.name == ".tmp" and parent.exists() and not any(parent.iterdir()):
+        parent.rmdir()
 
 
 def main() -> int:

@@ -1078,6 +1078,10 @@ def out_dir_for(input_file: Path) -> Path:
     return source_dir_for(input_file) / "out"
 
 
+def output_dir_arg(args: argparse.Namespace, input_file: Path) -> Path:
+    return Path(args.out_dir) if getattr(args, "out_dir", None) else out_dir_for(input_file)
+
+
 def cmd_ensure(args: argparse.Namespace) -> int:
     ensure(install=not args.no_install)
     return 0
@@ -1129,10 +1133,11 @@ def cmd_html_capture(args: argparse.Namespace) -> int:
 
 def cmd_preview(args: argparse.Namespace) -> int:
     input_file = Path(args.input)
-    out_dir = out_dir_for(input_file)
+    out_dir = output_dir_arg(args, input_file)
     out_dir.mkdir(parents=True, exist_ok=True)
     if args.output:
-        output = out_dir / Path(args.output).name
+        output_path = Path(args.output)
+        output = output_path if output_path.parent != Path(".") else out_dir / output_path.name
     else:
         output = out_dir / f"{input_file.stem}.preview.png"
     page_index = args.page - 1 if args.page is not None else None
@@ -1142,7 +1147,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
 
 def cmd_preview_pages(args: argparse.Namespace) -> int:
     input_file = Path(args.input)
-    out_dir = out_dir_for(input_file)
+    out_dir = output_dir_arg(args, input_file)
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = args.stem or input_file.stem
     count = drawio_page_count(input_file)
@@ -1187,14 +1192,19 @@ def cmd_normalize_vsdx_textxform(args: argparse.Namespace) -> int:
 
 def cmd_visio_preview(args: argparse.Namespace) -> int:
     input_file = Path(args.input)
-    output = Path(args.output) if args.output else out_dir_for(input_file) / f"{input_file.stem}.visio-preview.png"
+    out_dir = output_dir_arg(args, input_file)
+    if args.output:
+        output_path = Path(args.output)
+        output = output_path if output_path.parent != Path(".") else out_dir / output_path.name
+    else:
+        output = out_dir / f"{input_file.stem}.visio-preview.png"
     export_with_visio(input_file, output, args.page)
     return 0
 
 
 def cmd_visio_preview_pages(args: argparse.Namespace) -> int:
     input_file = Path(args.input)
-    out_dir = out_dir_for(input_file)
+    out_dir = output_dir_arg(args, input_file)
     stem = args.stem or input_file.stem
     export_all_with_visio(input_file, out_dir, stem)
     return 0
@@ -1208,7 +1218,9 @@ def cmd_repair_drawio(args: argparse.Namespace) -> int:
     input_file = Path(args.file)
     out_dir = out_dir_for(input_file)
     out_dir.mkdir(parents=True, exist_ok=True)
-    return repair_drawio(input_file, out_dir / Path(args.output).name)
+    output_path = Path(args.output)
+    output = output_path if output_path.parent != Path(".") else out_dir / output_path.name
+    return repair_drawio(input_file, output)
 
 
 def cmd_audit_text(args: argparse.Namespace) -> int:
@@ -1219,10 +1231,12 @@ def cmd_roundtrip_check(args: argparse.Namespace) -> int:
     input_file = Path(args.input)
     out_dir = out_dir_for(input_file)
     out_dir.mkdir(parents=True, exist_ok=True)
+    evidence_dir = Path(args.evidence_dir) if args.evidence_dir else out_dir
+    evidence_dir.mkdir(parents=True, exist_ok=True)
     stem = args.stem or input_file.stem
-    drawio_png = out_dir / f"{stem}.drawio-preview.png"
+    drawio_png = evidence_dir / f"{stem}.drawio-preview.png"
     vsdx_file = out_dir / f"{stem}.vsdx"
-    visio_png = out_dir / f"{stem}.visio-preview.png"
+    visio_png = evidence_dir / f"{stem}.visio-preview.png"
 
     audit_result = audit_drawio(input_file)
     if audit_result != 0 and not args.allow_risky:
@@ -1298,6 +1312,17 @@ def cmd_scratch_create(args: argparse.Namespace) -> int:
 
 def cmd_scratch_clean(args: argparse.Namespace) -> int:
     proc = run([sys.executable, str(script_path("scratch.py")), "clean", args.path], check=False)
+    print(proc.stdout, end="")
+    return proc.returncode
+
+
+def cmd_final_clean(args: argparse.Namespace) -> int:
+    cmd = [sys.executable, str(script_path("final_clean.py")), args.out_dir, "--stem", args.stem]
+    if args.deliverables_only:
+        cmd.append("--deliverables-only")
+    if args.apply:
+        cmd.append("--apply")
+    proc = run(cmd, check=False)
     print(proc.stdout, end="")
     return proc.returncode
 
@@ -1421,6 +1446,17 @@ def main() -> int:
     scratch_clean.add_argument("path")
     scratch_clean.set_defaults(func=cmd_scratch_clean)
 
+    final_clean = sub.add_parser("final-clean", help="remove non-deliverable files from out/ by stem whitelist")
+    final_clean.add_argument("out_dir")
+    final_clean.add_argument("--stem", required=True)
+    final_clean.add_argument(
+        "--deliverables-only",
+        action="store_true",
+        help="keep only final validated .drawio and .vsdx deliverables",
+    )
+    final_clean.add_argument("--apply", action="store_true", help="delete files; default is dry-run")
+    final_clean.set_defaults(func=cmd_final_clean)
+
     validate_structure = sub.add_parser("validate-structure", help="validate HTML-to-drawio structure without screenshots")
     validate_structure.add_argument("--html", required=True)
     validate_structure.add_argument("--drawio", required=True)
@@ -1455,6 +1491,7 @@ def main() -> int:
     preview = sub.add_parser("preview", help="export a PNG preview")
     preview.add_argument("input")
     preview.add_argument("-o", "--output")
+    preview.add_argument("--out-dir", help="directory for the preview when --output is a filename or omitted")
     preview.add_argument("--width", type=int, default=2000)
     preview.add_argument("--page", type=int, help="1-based draw.io page number to export")
     preview.add_argument("--no-install", action="store_true", help="do not auto-install draw.io Desktop 26.0.16")
@@ -1462,6 +1499,7 @@ def main() -> int:
 
     preview_pages = sub.add_parser("preview-pages", help="export one PNG preview per draw.io page")
     preview_pages.add_argument("input")
+    preview_pages.add_argument("--out-dir", help="directory for generated page previews")
     preview_pages.add_argument("--width", type=int, default=2000)
     preview_pages.add_argument("--stem")
     preview_pages.add_argument("--no-install", action="store_true", help="do not auto-install draw.io Desktop 26.0.16")
@@ -1490,11 +1528,13 @@ def main() -> int:
     visio_preview = sub.add_parser("visio-preview", help="export a PNG preview from VSDX using Microsoft Visio COM")
     visio_preview.add_argument("input")
     visio_preview.add_argument("-o", "--output")
+    visio_preview.add_argument("--out-dir", help="directory for the preview when --output is a filename or omitted")
     visio_preview.add_argument("--page", type=int, default=1)
     visio_preview.set_defaults(func=cmd_visio_preview)
 
     visio_preview_pages = sub.add_parser("visio-preview-pages", help="export one PNG preview per VSDX page using Microsoft Visio COM")
     visio_preview_pages.add_argument("input")
+    visio_preview_pages.add_argument("--out-dir", help="directory for generated Visio page previews")
     visio_preview_pages.add_argument("--stem")
     visio_preview_pages.set_defaults(func=cmd_visio_preview_pages)
 
@@ -1515,6 +1555,7 @@ def main() -> int:
     rt = sub.add_parser("roundtrip-check", help="export drawio preview, VSDX, and Visio-rendered preview")
     rt.add_argument("input")
     rt.add_argument("--stem")
+    rt.add_argument("--evidence-dir", help="directory for draw.io and Visio PNG evidence; VSDX remains in out/")
     rt.add_argument("--width", type=int, default=2000)
     rt.add_argument("--page", type=int, default=1, help="1-based Visio page number to export as the preview")
     rt.add_argument("--allow-risky", action="store_true", help="continue even if draw.io pre-export audit fails")

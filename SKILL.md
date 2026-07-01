@@ -20,7 +20,8 @@ Before doing conversion work, read the reference file that owns the detailed pro
 ## 1. Non-Negotiable Rules
 
 - Keep the original source file unchanged.
-- Put converted or repaired `.drawio` files, exported `.vsdx` files, previews, and screenshots in an `out/` folder beside the source.
+- Put only the final validated `.drawio` and final validated `.vsdx` deliverables in an `out/` folder beside the source.
+- Put previews, worklists, screenshots, validation reports, visual diff images, failed repair candidates, unpacked packages, and cache files under `out/.tmp/<run-id>/`, not directly in `out/`.
 - Generate or repair `.drawio` directly. Do not generate HTML first unless the user explicitly asks for HTML.
 - For image inputs, reconstruct editable diagram structure in `.drawio`; do not deliver a VSDX that is only a pasted bitmap unless the user explicitly asks for a raster-only result.
 - Use the same VSDX-compatible source contract for newly generated and repaired `.drawio` files.
@@ -35,6 +36,8 @@ Before doing conversion work, read the reference file that owns the detailed pro
 - If Visio COM is unavailable, report that true Visio effect validation could not be completed.
 - Support both native Windows Python and WSL-on-Windows execution. When calling Windows applications from WSL, convert WSL paths to Windows paths.
 - Delete temporary files, comparison pages, unpacked folders, validation scratch files, and failed intermediate repair outputs after use.
+- On successful delivery, delete `out/.tmp/<run-id>` and remove the empty `out/.tmp` parent when possible. On failure, keep `out/.tmp/<run-id>` for debugging and report its path.
+- Before marking cleanup complete, run deliverables-only final cleanup on `out/`; the root `out/` folder must contain only the final validated `.drawio` and `.vsdx` for the requested stem.
 - Use bundled scripts for repeatable conversion work; do not leave one-off conversion scripts in the user's `out/` folder.
 
 ## 2. End-to-End Workflow
@@ -99,29 +102,30 @@ After the input-specific preparation, all paths rejoin the common workflow below
 
 Create an `out/` folder beside the source file.
 
-Generate a conversion worklist in `out/` before heavy conversion/export work:
+Create a scratch directory and generate a conversion worklist inside it before heavy conversion/export work:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist source.html
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist source.html --drawio out/source.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist source.html --out-dir out/.tmp/<run-id>
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist source.html --drawio out/source.drawio --out-dir out/.tmp/<run-id>
 ```
 
 This writes both:
 
-- `out/<source>.worklist.json` as the machine-readable source of truth.
-- `out/<source>.worklist.md` as the user-readable report.
+- `out/.tmp/<run-id>/<source>.worklist.json` as the machine-readable source of truth.
+- `out/.tmp/<run-id>/<source>.worklist.md` as the user-readable report.
 
 Update check status as steps complete:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist-update out/source.worklist.json --id audit_drawio --status pass
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist-update out/.tmp/<run-id>/source.worklist.json --id audit_drawio --status pass
 ```
 
 Check:
 
 - The original source file remains in its original location.
-- Generated, repaired, and exported deliverables go into `out/`.
-- The worklist records source page/container, draw.io page, expected source screenshot, draw.io preview, Visio preview, and required validation checks.
+- Only final validated generated/repaired `.drawio` and exported `.vsdx` deliverables go into `out/`.
+- The worklist records source page/container, draw.io page, temporary source screenshot baseline, draw.io preview, Visio preview, and required validation checks.
 - Scratch files are not retained as deliverables.
 
 Create scratch directories only under `out/.tmp/<run-id>`:
@@ -129,9 +133,10 @@ Create scratch directories only under `out/.tmp/<run-id>`:
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-create --out-dir out
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py scratch-clean out/.tmp/<run-id>
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py final-clean out --stem <stem> --deliverables-only --apply
 ```
 
-Keep scratch files only when a failure needs debugging. On successful delivery, remove scratch files and keep only final `.drawio`, `.vsdx`, previews, and worklist files.
+Use the created `out/.tmp/<run-id>/` for all Stage 1/Stage 2 previews, worklists, reports, diff files, HTML screenshots, failed repair candidates, and other cache files. Keep scratch files only when a failure needs debugging. On successful delivery, remove scratch files and run `final-clean --deliverables-only` so `out/` keeps only the final validated `.drawio` and `.vsdx`.
 
 ### Step 3. Generate or Repair `.drawio`
 
@@ -199,12 +204,12 @@ Check or install draw.io Desktop `26.0.16`, then export PNG. Use `references/vsd
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py ensure
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py ensure --no-install
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --no-install
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --out-dir out/.tmp/<run-id>
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --out-dir out/.tmp/<run-id> --no-install
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000 --out-dir out/.tmp/<run-id>
 ```
 
-Use `preview` for a known single-page file or a targeted one-page check. Use `preview-pages` for any multi-page `.drawio`; it exports one PNG per `<diagram>` page as `out/<stem>.drawio-pageN.png`.
+Use `preview` for a known single-page file or a targeted one-page check. Use `preview-pages` for any multi-page `.drawio`; in the deliverables-only workflow it exports one PNG per `<diagram>` page as `out/.tmp/<run-id>/<stem>.drawio-pageN.png`.
 
 Step check:
 
@@ -232,7 +237,7 @@ Use the correct baseline for the input type:
 For HTML screenshots, use only the bundled command by default:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py html-capture source.html --selector ".figure" --out out --stem source
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py html-capture source.html --selector ".figure" --out out/.tmp/<run-id> --stem source
 ```
 
 This command uses Python Playwright Chromium only. If it is unavailable, ask the user to install it or continue with reduced fidelity validation:
@@ -252,14 +257,14 @@ Optional automatic triage:
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py validate-structure \
   --html source.html \
   --drawio out/output.drawio \
-  --report out/output.stage1-structure.json
+  --report out/.tmp/<run-id>/output.stage1-structure.json
 
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/visual_compare.py \
-  --baseline source-preview.png \
-  --candidate out/output.drawio-preview.png \
+  --baseline out/.tmp/<run-id>/source-preview.png \
+  --candidate out/.tmp/<run-id>/output.drawio-preview.png \
   --mode stage1-html \
-  --report out/output.stage1-visual.json \
-  --diff out/output.stage1-diff.ppm
+  --report out/.tmp/<run-id>/output.stage1-visual.json \
+  --diff out/.tmp/<run-id>/output.stage1-diff.ppm
 ```
 
 For HTML inputs, run structure validation even when screenshots are unavailable. It checks page count, key text, main semantic element counts, and page bounds.
@@ -299,7 +304,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx 
 After the Source-to-Draw.io Preview Gate has passed, prefer the round-trip command to generate the VSDX and Stage 2 preview artifacts:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000 --evidence-dir out/.tmp/<run-id>
 ```
 
 `roundtrip-check` is called only after Stage 1 source approval, and it does not replace the input-specific Stage 1 comparison. See `references/vsdx-export.md` for its detailed responsibilities and outputs.
@@ -344,18 +349,18 @@ Do not use draw.io's VSDX-to-PNG rendering as the final Visio effect image.
 For multi-page VSDX files, export every Visio page:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py visio-preview-pages out/output.vsdx --stem output
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py visio-preview-pages out/output.vsdx --stem output --out-dir out/.tmp/<run-id>
 ```
 
 Optional automatic triage:
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py visual-triage \
-  --baseline out/output.drawio-preview.png \
-  --candidate out/output.visio-preview.png \
+  --baseline out/.tmp/<run-id>/output.drawio-preview.png \
+  --candidate out/.tmp/<run-id>/output.visio-preview.png \
   --mode stage2-vsdx \
-  --report out/output.stage2-triage.json \
-  --diff out/output.stage2-diff.ppm
+  --report out/.tmp/<run-id>/output.stage2-triage.json \
+  --diff out/.tmp/<run-id>/output.stage2-diff.ppm
 ```
 
 Stage 2 validation is structure-first. Missing text, missing shapes, severe layout drift, color loss, clipping, or text offset are failures. Pixel differences from antialiasing, font rasterization, and small line-weight changes are review signals, not automatic failures.
@@ -410,16 +415,15 @@ This final review checks delivery completeness only. It does not replace the ste
 Check:
 
 - Original source file was not overwritten.
-- Final `.drawio` is in `out/`, if generated or repaired.
-- Final `.vsdx` is in `out/`, if exported.
-- `.drawio` preview PNG is in `out/`.
-- Visio COM preview PNG is in `out/`, or COM unavailability is explicitly reported.
-- For multi-page inputs, every mapped page has source baseline, draw.io preview, and Visio COM preview artifacts or a clearly reported reason for omission.
-- The conversion worklist exists in `out/` and its required checks are complete or explicitly marked unavailable.
+- Final `.drawio` is in `out/`, if generated or repaired, and was validated after its last modification.
+- Final `.vsdx` is in `out/`, if exported, and was validated after its last modification.
+- `.drawio` preview PNGs, Visio COM preview PNGs, worklists, source baselines, reports, and diffs were written under `out/.tmp/<run-id>/` during validation.
+- For multi-page inputs, every mapped page had a source baseline during validation when available; every mapped page had draw.io and Visio preview evidence in scratch, or a clearly reported reason for omission.
+- The conversion worklist existed in scratch during validation and its required checks were complete or explicitly marked unavailable before cleanup.
 - `audit-drawio` passed, or the file is clearly marked as a risk build.
 - `validate-vsdx` passed.
 - draw.io Desktop version used was `26.0.16`.
-- Temporary files and failed intermediate outputs were removed.
+- On success, `scratch-clean` removed `out/.tmp/<run-id>` and `final-clean out --stem <stem> --deliverables-only --apply` removed root-level non-deliverable files from `out/`. On failure, scratch was retained and reported.
 
 ## 3. Input Paths
 
@@ -560,20 +564,20 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio
 Repair existing `.drawio`:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/.tmp/<run-id>/input.repaired1.drawio
 ```
 
 Export `.drawio` preview:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview input.drawio --width 2000 --out-dir out/.tmp/<run-id>
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000 --out-dir out/.tmp/<run-id>
 ```
 
 Generate/update a conversion worklist:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist source.html --drawio out/source.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist source.html --drawio out/source.drawio --out-dir out/.tmp/<run-id>
 ```
 
 Export VSDX:
@@ -585,13 +589,13 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py export-vsdx 
 Stage 2 round-trip artifact generation:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output-name --width 2000 --evidence-dir out/.tmp/<run-id>
 ```
 
 Export all Visio-rendered page previews for a multi-page VSDX:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py visio-preview-pages out/output.vsdx --stem output-name
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py visio-preview-pages out/output.vsdx --stem output-name --out-dir out/.tmp/<run-id>
 ```
 
 Normalize VSDX colors:
@@ -613,8 +617,8 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/visual_compare.py \
   --baseline baseline.png \
   --candidate candidate.png \
   --mode stage2-vsdx \
-  --report out/visual.json \
-  --diff out/visual-diff.ppm
+  --report out/.tmp/<run-id>/visual.json \
+  --diff out/.tmp/<run-id>/visual-diff.ppm
 ```
 
 Audit important text:
@@ -674,9 +678,7 @@ Report only useful artifacts:
 
 - final `.drawio` source path, if generated or changed
 - final `.vsdx` path, if exported
-- `.drawio` preview image path in `out/`, if generated
-- Visio-rendered preview path in `out/`, if generated
-- conversion worklist path, if generated
-- visual comparison report/diff path, if generated and useful
+- validation summary, including whether Visio COM preview validation completed
+- scratch evidence path only when the run failed or the user asked to retain audit evidence
 - draw.io CLI/Desktop version used
 - short validation result

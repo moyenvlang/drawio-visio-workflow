@@ -82,7 +82,11 @@ def drawio_pages(path: Path) -> list[str]:
     return [page.get("name") or f"Page {index}" for index, page in enumerate(pages, 1)]
 
 
-def detect_pages(source: Path, drawio: Path | None, stem: str) -> tuple[str, list[dict[str, object]]]:
+def display_path(path: Path) -> str:
+    return path.as_posix()
+
+
+def detect_pages(source: Path, drawio: Path | None, stem: str, evidence_dir: Path) -> tuple[str, list[dict[str, object]]]:
     suffix = source.suffix.lower()
     pages: list[dict[str, object]] = []
     if suffix in {".html", ".htm"}:
@@ -97,9 +101,9 @@ def detect_pages(source: Path, drawio: Path | None, stem: str) -> tuple[str, lis
                     "source": f"#{figure.get('id')}" if figure.get("id") else f"figure[{index}]",
                     "title": figure.get("title") or f"Figure {index}",
                     "note": figure.get("note") or "",
-                    "html_screenshot": f"out/{stem}.html-page{index}.png",
-                    "drawio_preview": f"out/{stem}.drawio-page{index}.png",
-                    "visio_preview": f"out/{stem}.visio-page{index}.png",
+                    "html_screenshot": display_path(evidence_dir / f"{stem}.html-page{index}.png"),
+                    "drawio_preview": display_path(evidence_dir / f"{stem}.drawio-page{index}.png"),
+                    "visio_preview": display_path(evidence_dir / f"{stem}.visio-page{index}.png"),
                 }
             )
     elif suffix == ".drawio":
@@ -111,8 +115,8 @@ def detect_pages(source: Path, drawio: Path | None, stem: str) -> tuple[str, lis
                     "source": f"diagram[{index}]",
                     "title": name,
                     "note": "",
-                    "drawio_preview": f"out/{stem}.drawio-page{index}.png",
-                    "visio_preview": f"out/{stem}.visio-page{index}.png",
+                    "drawio_preview": display_path(evidence_dir / f"{stem}.drawio-page{index}.png"),
+                    "visio_preview": display_path(evidence_dir / f"{stem}.visio-page{index}.png"),
                 }
             )
     elif suffix in {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff"}:
@@ -152,7 +156,7 @@ def default_checks() -> list[dict[str, str]]:
 
 def create_worklist(source: Path, drawio: Path | None, stem: str | None, out_dir: Path) -> dict[str, object]:
     artifact_stem = stem or (drawio.stem if drawio else source.stem)
-    input_type, pages = detect_pages(source, drawio, artifact_stem)
+    input_type, pages = detect_pages(source, drawio, artifact_stem, out_dir)
     return {
         "schema": "drawio-visio-worklist/v1",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -230,7 +234,7 @@ def render_markdown(data: dict[str, object]) -> str:
             ]
         )
         if page.get("html_screenshot"):
-            lines.append(f"- HTML/source screenshot: `{page.get('html_screenshot')}`")
+            lines.append(f"- HTML/source screenshot (temporary Stage 1 baseline): `{page.get('html_screenshot')}`")
         if page.get("drawio_preview"):
             lines.append(f"- draw.io preview: `{page.get('drawio_preview')}`")
         if page.get("visio_preview"):
@@ -256,6 +260,7 @@ def render_markdown(data: dict[str, object]) -> str:
         [
             "",
             "Automatic visual comparison is triage. A `fail` result requires manual review; it blocks final delivery only when structural drift, missing text, color loss, clipping, or material layout shifts are confirmed.",
+            "Temporary Stage 1/Stage 2 reports, diffs, and HTML screenshots should live under `out/.tmp/<run-id>/` and are not final deliverables.",
             "",
         ]
     )

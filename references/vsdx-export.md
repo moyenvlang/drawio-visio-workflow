@@ -49,7 +49,7 @@ Direct `.drawio` preview export and Stage 1 baseline comparison are owned by `re
 & "C:\Program Files\draw.io\draw.io.exe" -x -f vsdx -o "out/output.vsdx" "input.drawio"
 ```
 
-Keep the original `.drawio` in place. Final VSDX files, Visio previews, package validation scratch, and Stage 2 comparison artifacts belong in the `out/` folder beside the source `.drawio`. Source `.drawio` generation, repair, image reconstruction, HTML mapping, and draw.io preview rules are owned by `references/drawio-generation.md`.
+Keep the original `.drawio` in place. Only final validated VSDX files belong in the root `out/` folder beside the source `.drawio`. Visio previews, package validation scratch, Stage 2 comparison reports, diff images, and cache files belong under `out/.tmp/<run-id>/`. Source `.drawio` generation, repair, image reconstruction, HTML mapping, and draw.io preview rules are owned by `references/drawio-generation.md`.
 
 After export, normalize VSDX color cells:
 
@@ -112,11 +112,11 @@ Use the visual comparison helper as an automatic triage step when baseline and c
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/visual_compare.py \
-  --baseline out/output.drawio-preview.png \
-  --candidate out/output.visio-preview.png \
+  --baseline out/.tmp/<run-id>/output.drawio-preview.png \
+  --candidate out/.tmp/<run-id>/output.visio-preview.png \
   --mode stage2-vsdx \
-  --report out/output.stage2-visual.json \
-  --diff out/output.stage2-diff.ppm
+  --report out/.tmp/<run-id>/output.stage2-visual.json \
+  --diff out/.tmp/<run-id>/output.stage2-diff.ppm
 ```
 
 The helper supports common non-interlaced 8-bit PNG files, PPM files, and any extra formats available through Python's stdlib tkinter build. It returns `pass`, `review_required`, or `fail`. It trims outer background margins by default; add `--no-crop` when page-level placement or whitespace is part of the requirement. Treat `fail` as an inspection trigger. It blocks final delivery only when manual review confirms structural drift, missing text, color loss, clipping, text offset, or material layout shifts. Renderer antialiasing, small line-weight changes, and harmless font rasterization differences alone do not block delivery. Treat `review_required` as a prompt to inspect the diff image and the baseline/candidate previews; do not count it as automatic approval.
@@ -127,7 +127,7 @@ For a manual one-page Visio COM preview after VSDX export:
 $visio = New-Object -ComObject Visio.Application
 $visio.Visible = $false
 $doc = $visio.Documents.Open((Resolve-Path "out/output.vsdx").Path)
-$doc.Pages.Item(1).Export((Join-Path (Resolve-Path "out").Path "output.visio-preview.png"))
+$doc.Pages.Item(1).Export((Join-Path (Resolve-Path "out/.tmp/<run-id>").Path "output.visio-preview.png"))
 $doc.Close()
 $visio.Quit()
 ```
@@ -135,15 +135,15 @@ $visio.Quit()
 For multi-page VSDX files, use the bundled helper:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py visio-preview-pages out/output.vsdx --stem output
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py visio-preview-pages out/output.vsdx --stem output --out-dir out/.tmp/<run-id>
 ```
 
-This writes `out/output.visio-page1.png`, `out/output.visio-page2.png`, and so on.
+This writes `out/.tmp/<run-id>/output.visio-page1.png`, `out/.tmp/<run-id>/output.visio-page2.png`, and so on.
 
 After Stage 1 has been completed and the `.drawio` preview is approved, use the bundled helper to generate Stage 2 artifacts:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output --width 2000
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py roundtrip-check input.drawio --stem output --width 2000 --evidence-dir out/.tmp/<run-id>
 ```
 
 The helper normalizes VSDX colors and `TextXForm` cells before opening the VSDX with Visio COM for the effect preview. It does not perform the input-specific Stage 1 comparison against the HTML screenshot, source image, original `.drawio` preview, or user-approved design; complete that comparison separately before treating its output as final.
@@ -153,10 +153,10 @@ The helper normalizes VSDX colors and `TextXForm` cells before opening the VSDX 
 The helper produces:
 
 - `out/output.vsdx`
-- `out/output.drawio-preview.png`
-- `out/output.visio-preview.png`
+- `out/.tmp/<run-id>/output.drawio-preview.png`
+- `out/.tmp/<run-id>/output.visio-preview.png`
 
-Approval requires completed Stage 1 source approval from `references/drawio-generation.md` and Stage 2 Visio comparison for every mapped page. Package validation, `roundtrip-check` output, and `visual_compare.py` output alone are not enough. For multi-page files, prefer `export-vsdx`, `preview-pages`, and `visio-preview-pages`; `roundtrip-check` is a targeted single-page helper unless run separately for each relevant page. Do not retain generated comparison HTML pages; use the source preview, compliant `.drawio` preview, Visio preview image, worklist, and optional visual comparison report/diff image as the retained review artifacts.
+Approval requires completed Stage 1 source approval from `references/drawio-generation.md` and Stage 2 Visio comparison for every mapped page. Package validation, `roundtrip-check` output, and `visual_compare.py` output alone are not enough. For multi-page files, prefer `export-vsdx`, `preview-pages`, and `visio-preview-pages`; `roundtrip-check` is a targeted single-page helper unless run separately for each relevant page. Do not retain generated comparison HTML pages in `out/`; keep source baselines, previews, worklists, visual comparison reports, and diff files under `out/.tmp/<run-id>/`. On successful delivery, final retained artifacts are only the validated `.drawio` and `.vsdx`; on failure, retain `out/.tmp/<run-id>/` for debugging.
 
 The Visio-rendered preview requires Microsoft Visio Desktop with COM automation available. If Visio COM is unavailable, report that the true Visio effect preview could not be produced; do not silently substitute a draw.io-rendered VSDX PNG for final validation. This applies equally to native Windows and WSL-on-Windows execution.
 

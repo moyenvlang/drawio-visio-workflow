@@ -4,11 +4,11 @@
 
 Use a single practical `.drawio` output unless the user asks for variants.
 
-Keep the original `.drawio` in place. Write converted or repaired `.drawio` deliverables to the `out/` folder beside the source/requested output path. Put `.drawio` preview images in the same `out/` folder. Delete temporary files, unused repair passes, extracted models, comparison pages, and experimental variants after use.
+Keep the original `.drawio` in place. Write only the final validated `.drawio` deliverable to the `out/` folder beside the source/requested output path. Put `.drawio` preview images, worklists, temporary screenshots, validation reports, diff images, unused repair passes, extracted models, comparison pages, and experimental variants under `out/.tmp/<run-id>/`, then delete them after successful delivery. If the run fails, keep `out/.tmp/<run-id>/` for debugging.
 
 For VSDX export paths, final `.vsdx` placement, package validation, color normalization, `TextXForm`, Visio COM previews, and Stage 2 comparison belong to `references/vsdx-export.md`.
 
-Before conversion or export, generate a worklist in `out/` that maps each source page/container to its draw.io page and expected preview artifacts. For multi-page inputs, every later preview, comparison, and Visio validation step must follow this mapping.
+Before conversion or export, generate a worklist in `out/.tmp/<run-id>/` that maps each source page/container to its draw.io page, temporary source baseline, and preview artifacts. For multi-page inputs, every later preview, comparison, and Visio validation step must follow this mapping.
 
 Preferred `<diagram>` payload for this workflow:
 
@@ -72,15 +72,15 @@ Run `audit-drawio` before VSDX export. If it blocks on recognizable composite la
 
 ```bash
 mkdir -p out
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired1.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired1.drawio -o out/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired2.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/input.repaired2.drawio -o out/input.repaired3.drawio
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/input.repaired3.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio input.drawio -o out/.tmp/<run-id>/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/.tmp/<run-id>/input.repaired1.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/.tmp/<run-id>/input.repaired1.drawio -o out/.tmp/<run-id>/input.repaired2.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/.tmp/<run-id>/input.repaired2.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py repair-drawio out/.tmp/<run-id>/input.repaired2.drawio -o out/.tmp/<run-id>/input.repaired3.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py audit-drawio out/.tmp/<run-id>/input.repaired3.drawio
 ```
 
-Stop as soon as one repaired file passes `audit-drawio`; use that file for preview and export. Keep only the selected repaired `.drawio` in `out/` and delete unused failed repair-pass files. If the third pass still fails, stop automatic repair and perform targeted manual/model edits or report the remaining blockers. Never overwrite the original file.
+Stop as soon as one repaired file passes `audit-drawio`; use that file for preview and export, then promote only the selected validated `.drawio` to `out/<stem>.drawio`. Keep failed repair-pass files in scratch until success cleanup. If the third pass still fails, stop automatic repair, keep scratch for debugging, and perform targeted manual/model edits or report the remaining blockers. Never overwrite the original file.
 
 The helper is conservative: it handles recognizable title/description and overlay/title/description labels, then leaves uncertain cases for manual edits.
 
@@ -117,7 +117,7 @@ When creating a diagram from requirements:
 Export `.drawio` preview PNGs before VSDX export:
 
 ```powershell
-& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "out/input.preview.png" "input.drawio"
+& "C:\Program Files\draw.io\draw.io.exe" -x -f png --width 2000 -o "out/.tmp/<run-id>/input.preview.png" "input.drawio"
 ```
 
 Do not use `-e` for preview PNGs.
@@ -125,10 +125,10 @@ Do not use `-e` for preview PNGs.
 For multi-page `.drawio` files, export every page preview:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000 --stem output
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py preview-pages input.drawio --width 2000 --stem output --out-dir out/.tmp/<run-id>
 ```
 
-This writes `out/output.drawio-page1.png`, `out/output.drawio-page2.png`, and so on. Do not treat the first page preview as validation coverage for the full file.
+This writes `out/.tmp/<run-id>/output.drawio-page1.png`, `out/.tmp/<run-id>/output.drawio-page2.png`, and so on. Do not treat the first page preview as validation coverage for the full file.
 
 Use the correct Stage 1 baseline for the input type:
 
@@ -141,11 +141,11 @@ Use the visual comparison helper as automatic triage when baseline and candidate
 
 ```bash
 python3 ~/.codex/skills/drawio-visio-workflow/scripts/visual_compare.py \
-  --baseline out/source-preview.png \
-  --candidate out/output.drawio-preview.png \
+  --baseline out/.tmp/<run-id>/source-preview.png \
+  --candidate out/.tmp/<run-id>/output.drawio-preview.png \
   --mode stage1-html \
-  --report out/output.stage1-visual.json \
-  --diff out/output.stage1-diff.ppm
+  --report out/.tmp/<run-id>/output.stage1-visual.json \
+  --diff out/.tmp/<run-id>/output.stage1-diff.ppm
 ```
 
 Use `--mode stage1-drawio`, `stage1-image`, or `stage1-new` for the other input paths. The helper is triage only; inspect `review_required` and `fail` results before deciding whether the gate passes.
@@ -182,7 +182,7 @@ The converter supports HTML that uses semantic containers such as `figure`, `can
 - Generate a worklist before or immediately after conversion:
 
 ```bash
-python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist input.html --drawio out/input.drawio
+python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist input.html --drawio out/input.drawio --out-dir out/.tmp/<run-id>
 ```
 
 - For `.figure`-based HTML, map each figure `id` and figure title to the same-order draw.io page. If the number of figures and draw.io pages differs, stop and repair the mapping before VSDX export.
@@ -196,7 +196,7 @@ python3 ~/.codex/skills/drawio-visio-workflow/scripts/drawio_cli.py worklist inp
 - For card body and bus text with mixed Chinese and ASCII technology strings, reserve an additional 4-8 px of height when possible.
 - For vertical upright text (`writing-mode: vertical-rl` / `text-orientation: upright`), do not rotate the whole label with `rotation=90`. Use explicit line breaks or separate text cells based on semantic tokens. Split CJK text per character, keep ASCII words, acronyms, protocol names, numbers, and version-like tokens unbroken, and split English phrases by words rather than letters. For example, `数字化` becomes `数\n字\n化`, `Service Layer` becomes `Service\nLayer`, and `SaaS` remains `SaaS`.
 - Mark vertical text, side-axis text, rotated text, connector labels, and intentionally offset labels as special text that must be excluded from generic VSDX `TextXForm` normalization.
-- Render each source HTML diagram container to its own browser reference screenshot and compare it with the mapped generated `.drawio` page preview before VSDX export. Do not compare an entire long HTML page to a single draw.io page. These browser screenshots are only the HTML-to-drawio Stage 1 baselines. Use `scripts/visual_compare.py --mode stage1-html` as automatic triage when both preview images exist. After Stage 1 passes for every mapped page, use the approved `.drawio` previews as the VSDX/Visio Stage 2 baselines. Fix the `.drawio` source and repeat Stage 1 for up to 3 rounds.
+- Render each source HTML diagram container to its own browser reference screenshot under `out/.tmp/<run-id>/` and compare it with the mapped generated `.drawio` page preview before VSDX export. Do not compare an entire long HTML page to a single draw.io page. These browser screenshots are only temporary HTML-to-drawio Stage 1 baselines. Use `scripts/visual_compare.py --mode stage1-html` as automatic triage when both preview images exist. After Stage 1 passes for every mapped page, use the approved `.drawio` previews in `out/.tmp/<run-id>/` as the VSDX/Visio Stage 2 baselines. Fix the `.drawio` source and repeat Stage 1 for up to 3 rounds.
 - After conversion, audit diagram count, page mapping, side-axis count, inferred elements, track boundaries, right boundaries, side-axis height, vertical text encoding, and desc/footer overflow before VSDX export.
 
 Do not treat the whole HTML file as a `.drawio`. Do not use a whole-page HTML screenshot as a Stage 1 baseline for one draw.io page when the HTML contains multiple diagrams. If the generated `.drawio` structure differs from the HTML structure, fix the `.drawio` source first; VSDX color and `TextXForm` repair are export-fidelity steps, not substitutes for correcting wrong HTML mapping. If the third HTML-vs-drawio comparison still has major structural differences, stop and report the remaining mismatches instead of exporting a final VSDX. Do not block final delivery only because optional decorative backgrounds were simplified or omitted.
